@@ -38,7 +38,6 @@ if __name__ == "__main__":
           packages=[
               'mne_sandbox',
               'mne_sandbox.connectivity',
-              'mne_sandbox.externals.scot',
               'mne_sandbox.preprocessing',
               'mne_sandbox.viz'
           ],

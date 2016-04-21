@@ -31,7 +31,7 @@ from mne_sandbox.connectivity import mvar_connectivity
 from mne.viz import circular_layout
 from mne_sandbox.viz import (plot_connectivity_circle,
                              plot_connectivity_inoutcircles)
-from mne_sandbox.externals.scot.connectivity_statistics import significance_fdr
+from scot.connectivity_statistics import significance_fdr
 
 print(__doc__)
 

@@ -6,13 +6,14 @@ from __future__ import division
 import numpy as np
 import logging
 
+from scot.varbase import VARBase
+from scot.var import VAR
+from scot.connectivity import connectivity
+from scot.connectivity_statistics import surrogate_connectivity
+from scot.xvschema import make_nfold
+
 from mne.parallel import parallel_func
 from mne.utils import logger, verbose
-from ..externals.scot.varbase import VARBase
-from ..externals.scot.var import VAR
-from ..externals.scot.connectivity import connectivity
-from ..externals.scot.connectivity_statistics import surrogate_connectivity
-from ..externals.scot.xvschema import make_nfold
 
 
 def _acm(x, l):
