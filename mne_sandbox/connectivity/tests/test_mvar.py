@@ -1,26 +1,8 @@
 import numpy as np
 from numpy.testing import assert_array_almost_equal
-from nose.tools import assert_raises, assert_equal
-
-from mne import SourceEstimate
+from nose.tools import assert_raises, assert_equal, assert_less, assert_greater
 
 from mne_sandbox.connectivity import mvar_connectivity
-
-
-def _stc_gen(data, sfreq, tmin, combo=False):
-    """Simulate a SourceEstimate generator"""
-    vertices = [np.arange(data.shape[1]), np.empty(0)]
-    for d in data:
-        if not combo:
-            stc = SourceEstimate(data=d, vertices=vertices,
-                                 tmin=tmin, tstep=1 / float(sfreq))
-            yield stc
-        else:
-            # simulate a combination of array and source estimate
-            arr = d[0]
-            stc = SourceEstimate(data=d[1:], vertices=vertices,
-                                 tmin=tmin, tstep=1 / float(sfreq))
-            yield (arr, stc)
 
 
 def _make_data(var_coef, n_samples, n_epochs):
@@ -132,3 +114,18 @@ def test_mvar_connectivity():
     assert_array_almost_equal(con['PDC'][:, :, 0],
                               h / np.sum(h, 0, keepdims=True), decimal=2)
     assert_array_almost_equal(con['GPDC'], con['PDC'], decimal=2)
+
+    # generate data with some directed connectivity
+    var_coef = np.zeros((1, n_sigs, n_sigs))
+    var_coef[:, 1, 0] = 1
+    var_coef[:, 2, 1] = 1
+    data = _make_data(var_coef, n_samples, n_epochs)
+
+    con, freqs, p, p_vals = mvar_connectivity(data, 'PDC', order=(1, None),
+                                              n_surrogates=10)
+    for i in range(n_sigs):
+        for j in range(n_sigs):
+            if var_coef[0, i, j] > 0:
+                assert_less(p_vals[0][i, j, 0], 0.05)
+            else:
+                assert_greater(p_vals[0][i, j, 0], 0.05)

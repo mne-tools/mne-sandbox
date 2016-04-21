@@ -18,6 +18,7 @@ from mne.fixes import tril_indices, normalize_colors
 from mne.viz.circle import _plot_connectivity_circle_onpick
 
 
+# copied from mne.viz.circle to add optional `plot_names` argument
 def plot_connectivity_circle(con, node_names, indices=None, n_lines=None,
                              node_angles=None, node_width=None,
                              node_colors=None, facecolor='black',
