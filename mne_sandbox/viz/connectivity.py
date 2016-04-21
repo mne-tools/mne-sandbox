@@ -274,7 +274,8 @@ def plot_connectivity_circle(con, node_names, indices=None, n_lines=None,
     # Draw node labels
     if plot_names:
         angles_deg = 180 * node_angles / np.pi
-        for name, angle_rad, angle_deg in zip(node_names, node_angles, angles_deg):
+        for name, angle_rad, angle_deg in zip(node_names, node_angles,
+                                              angles_deg):
             if angle_deg >= 270:
                 ha = 'left'
             else:
@@ -320,7 +321,7 @@ def _plot_connectivity_matrix_nodename(x, y, con, node_names):
     if x < 0 or y < 0 or x >= len(node_names) or y >= len(node_names):
         return ''
     return '{} --> {}: {:.3g}'.format(node_names[x], node_names[y],
-                                  con[y + 2, x + 2])
+                                      con[y + 2, x + 2])
 
 
 def plot_connectivity_matrix(con, node_names, indices=None,

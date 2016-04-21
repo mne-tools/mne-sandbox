@@ -47,7 +47,7 @@ def _fit_mvar_lsq(data, pmin, pmax, delta, n_jobs, verbose):
     if pmin != pmax:
         logger.info('MVAR order selection...')
         var.optimize_order(data, pmin, pmax, n_jobs=n_jobs, verbose=verbose)
-    #todo: only convert if data is a generator
+    # todo: only convert if data is a generator
     data = np.asarray(list(data)).transpose([2, 1, 0])
     var.fit(data)
     return var

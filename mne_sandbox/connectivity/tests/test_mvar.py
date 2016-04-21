@@ -30,7 +30,7 @@ def _make_data(var_coef, n_samples, n_epochs):
     x = np.random.randn(n_signals, n_epochs * n_samples + 10 * var_order)
     for i in range(var_order, x.shape[1]):
         for k in range(var_order):
-            x[:, [i]] += np.dot(var_coef[k], x[:, [i-k-1]])
+            x[:, [i]] += np.dot(var_coef[k], x[:, [i - k - 1]])
 
     x = x[:, -n_epochs * n_samples:]
 
@@ -55,7 +55,8 @@ def test_mvar_connectivity():
     assert_raises(ValueError, mvar_connectivity, [], 'PDC', 99, fmin=(11,),
                   fmax=(12, 15))
     assert_raises(ValueError, mvar_connectivity, [], 'S', fitting_mode='')
-    assert_raises(NotImplementedError, mvar_connectivity, [], 'H', fitting_mode='yw')
+    assert_raises(NotImplementedError, mvar_connectivity, [], 'H',
+                  fitting_mode='yw')
 
     methods = ['S', 'COH', 'DTF', 'PDC', 'ffDTF', 'GPDC', 'GDTF', 'A']
 
@@ -63,7 +64,8 @@ def test_mvar_connectivity():
     var_coef = np.zeros((1, n_sigs, n_sigs))
     data = _make_data(var_coef, n_samples, n_epochs)
 
-    con, freqs, p, p_vals = mvar_connectivity(data, methods, order=1, fitting_mode='yw')
+    con, freqs, p, p_vals = mvar_connectivity(data, methods, order=1,
+                                              fitting_mode='yw')
     con = dict((m, c) for m, c in zip(methods, con))
     assert_equal(p, 1)
 
