@@ -1,6 +1,6 @@
 import numpy as np
-from numpy.testing import assert_array_almost_equal
-from nose.tools import assert_raises, assert_equal, assert_less, assert_greater
+from numpy.testing import assert_array_almost_equal, assert_array_less
+from nose.tools import assert_raises, assert_equal
 
 from mne_sandbox.connectivity import mvar_connectivity
 
@@ -116,6 +116,8 @@ def test_mvar_connectivity():
     assert_array_almost_equal(con['GPDC'], con['PDC'], decimal=2)
 
     # generate data with some directed connectivity
+    # check if statistics report only significant connectivity where the
+    # original coefficients were non-zero
     var_coef = np.zeros((1, n_sigs, n_sigs))
     var_coef[:, 1, 0] = 1
     var_coef[:, 2, 1] = 1
@@ -126,6 +128,6 @@ def test_mvar_connectivity():
     for i in range(n_sigs):
         for j in range(n_sigs):
             if var_coef[0, i, j] > 0:
-                assert_less(p_vals[0][i, j, 0], 0.05)
+                assert_array_less(p_vals[0][i, j, 0], 0.05)
             else:
-                assert_greater(p_vals[0][i, j, 0], 0.05)
+                assert_array_less(0.05, p_vals[0][i, j, 0])
