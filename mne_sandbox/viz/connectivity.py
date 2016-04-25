@@ -421,6 +421,7 @@ def plot_connectivity_matrix(con, node_names, indices=None,
         raise ValueError('con has to be 1D or a square matrix')
 
     # remove diagonal (do not show node's self-connectivity)
+    con = con.copy()
     np.fill_diagonal(con, np.nan)
 
     # get the colormap

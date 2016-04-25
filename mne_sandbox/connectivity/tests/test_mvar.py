@@ -1,3 +1,7 @@
+# Authors: Martin Billinger <martin.billinger@tugraz.at>
+#
+# License: BSD (3-clause)
+
 import numpy as np
 from numpy.testing import assert_array_almost_equal, assert_array_less
 from nose.tools import assert_raises, assert_equal
