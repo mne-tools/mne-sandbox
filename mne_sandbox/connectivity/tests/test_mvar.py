@@ -128,7 +128,8 @@ def test_mvar_connectivity():
     data = _make_data(var_coef, n_samples, n_epochs)
 
     con, freqs, p, p_vals = mvar_connectivity(data, 'PDC', order=(1, None),
-                                              n_surrogates=10)
+                                              n_surrogates=20)
+
     for i in range(n_sigs):
         for j in range(n_sigs):
             if var_coef[0, i, j] > 0:
