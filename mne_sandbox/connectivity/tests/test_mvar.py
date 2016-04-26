@@ -3,10 +3,13 @@
 # License: BSD (3-clause)
 
 import numpy as np
-from numpy.testing import assert_array_almost_equal, assert_array_less
+from numpy.testing import (assert_array_equal, assert_array_almost_equal,
+                           assert_array_less)
 from nose.tools import assert_raises, assert_equal
+from copy import deepcopy
 
 from mne_sandbox.connectivity import mvar_connectivity
+from mne_sandbox.connectivity.mvar import _fit_mvar_lsq, _fit_mvar_yw
 
 
 def _make_data(var_coef, n_samples, n_epochs):
@@ -136,3 +139,27 @@ def test_mvar_connectivity():
                 assert_array_less(p_vals[0][i, j, 0], 0.05)
             else:
                 assert_array_less(0.05, p_vals[0][i, j, 0])
+
+
+def test_fit_mvar():
+    """Test MVAR model fitting"""
+    np.random.seed(0)
+
+    n_sigs = 3
+    n_epochs = 50
+    n_samples = 200
+
+    var_coef = np.zeros((1, n_sigs, n_sigs))
+    var_coef[0, :, :] = [[0.9, 0, 0],
+                         [1, 0.5, 0],
+                         [2, 0, -0.5]]
+    data = _make_data(var_coef, n_samples, n_epochs)
+    data0 = deepcopy(data)
+
+    var = _fit_mvar_lsq(data, pmin=1, pmax=1, delta=0, n_jobs=1, verbose=0)
+    assert_array_equal(data, data0)
+    assert_array_almost_equal(var_coef[0], var.coef, decimal=2)
+
+    var = _fit_mvar_yw(data, pmin=1, pmax=1, n_jobs=1, verbose=0)
+    assert_array_equal(data, data0)
+    assert_array_almost_equal(var_coef[0], var.coef, decimal=2)

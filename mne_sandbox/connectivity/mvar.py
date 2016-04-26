@@ -25,7 +25,7 @@ def _acm(x, l):
         a = x[:, l:]
         b = x[:, 0:-l]
 
-    return np.dot(a[:, :], b[:, :].T) / a.shape[1]
+    return np.dot(a[:, :], b[:, :].T).T / a.shape[1]
 
 
 def _epoch_autocorrelations(epoch, max_lag):
