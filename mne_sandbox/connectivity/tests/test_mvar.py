@@ -27,6 +27,11 @@ def _make_data(var_coef, n_samples, n_epochs):
     return [x[:, i + win] for i in range(0, n_epochs * n_samples, n_samples)]
 
 
+def _data_generator(data):
+    for d in data:
+        yield d
+
+
 def test_mvar_connectivity():
     """Test MVAR connectivity estimation"""
     # Use a case known to have no spurious correlations (it would bad if
@@ -143,10 +148,10 @@ def test_mvar_connectivity():
 
 def test_fit_mvar():
     """Test MVAR model fitting"""
-    np.random.seed(0)
+    np.random.seed(42)
 
     n_sigs = 3
-    n_epochs = 50
+    n_epochs = 65
     n_samples = 200
 
     var_coef = np.zeros((1, n_sigs, n_sigs))
@@ -160,6 +165,14 @@ def test_fit_mvar():
     assert_array_equal(data, data0)
     assert_array_almost_equal(var_coef[0], var.coef, decimal=2)
 
-    var = _fit_mvar_yw(data, pmin=1, pmax=1, n_jobs=1, verbose=0)
+    var = _fit_mvar_yw(data, pmin=1, pmax=1, n_jobs=1, blocksize=7, verbose=0)
     assert_array_equal(data, data0)
+    assert_array_almost_equal(var_coef[0], var.coef, decimal=2)
+
+    data = _data_generator(data0)
+    var = _fit_mvar_lsq(data, pmin=1, pmax=1, delta=0, n_jobs=2, verbose=0)
+    assert_array_almost_equal(var_coef[0], var.coef, decimal=2)
+
+    data = _data_generator(data0)
+    var = _fit_mvar_yw(data, pmin=1, pmax=1, n_jobs=2, blocksize=9, verbose=0)
     assert_array_almost_equal(var_coef[0], var.coef, decimal=2)

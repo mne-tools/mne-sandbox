@@ -11,25 +11,21 @@ from scot.var import VAR
 from scot.connectivity import connectivity
 from scot.connectivity_statistics import surrogate_connectivity
 from scot.xvschema import make_nfold
+from scot.utils import acm
 
 from mne.parallel import parallel_func
 from mne.utils import logger, verbose
 
 
-def _acm(x, l):
-    """Calculates autocorrelation matrix of x at lag l.
-    """
-    if l == 0:
-        a, b = x, x
-    else:
-        a = x[:, l:]
-        b = x[:, 0:-l]
-
-    return np.dot(a[:, :], b[:, :].T).T / a.shape[1]
+# todo: I'm sure we can import generator from somewhere...
+def _generator():
+    yield None
+generator = type(_generator())
+del _generator
 
 
-def _epoch_autocorrelations(epoch, max_lag):
-    return [_acm(epoch, l) for l in range(max_lag + 1)]
+def _autocorrelations(epochs, max_lag):
+    return [acm(epochs, l) for l in range(max_lag + 1)]
 
 
 def _get_n_epochs(epochs, n):
@@ -40,7 +36,20 @@ def _get_n_epochs(epochs, n):
         if len(epochs_out) >= n:
             yield epochs_out
             epochs_out = []
-    yield epochs_out
+    if len(epochs_out) > 0:
+        yield epochs_out
+
+
+def _get_n_epochblocks(epochs, n_blocks, blocksize):
+    """Generator that returns lists with at most n_blocks of epochs"""
+    blocks_out = []
+    for block in _get_n_epochs(epochs, blocksize):
+        blocks_out.append(block)
+        if len(blocks_out) >= n_blocks:
+            yield blocks_out
+            blocks_out = []
+    if len(blocks_out) > 0:
+        yield blocks_out
 
 
 def _fit_mvar_lsq(data, pmin, pmax, delta, n_jobs, verbose):
@@ -54,26 +63,28 @@ def _fit_mvar_lsq(data, pmin, pmax, delta, n_jobs, verbose):
     return var
 
 
-def _fit_mvar_yw(data, pmin, pmax, n_jobs=1, verbose=None):
+def _fit_mvar_yw(data, pmin, pmax, n_jobs, blocksize, verbose=None):
     if pmin != pmax:
         raise NotImplementedError('Yule-Walker fitting does not support '
                                   'automatic model order selection.')
     order = pmin
 
-    parallel, my_epoch_autocorrelations, _ = \
-        parallel_func(_epoch_autocorrelations, n_jobs,
+    if not isinstance(data, generator):
+        blocksize = int(np.ceil(len(data) / n_jobs))
+
+    parallel, block_autocorrelations, _ = \
+        parallel_func(_autocorrelations, n_jobs,
                       verbose=verbose)
-    n_epochs = 0
-    logger.info('Accumulating autocovariance matrices...')
-    for epoch_block in _get_n_epochs(data, n_jobs):
-        out = parallel(my_epoch_autocorrelations(epoch, order)
-                       for epoch in epoch_block)
-        if n_epochs == 0:
-            acm_estimates = np.sum(out, 0)
+    n_blocks = 0
+    for blocks in _get_n_epochblocks(data, n_jobs, blocksize):
+        acms = parallel(block_autocorrelations(block, order)
+                        for block in blocks)
+        if n_blocks == 0:
+            acm_estimates = np.sum(acms, 0)
         else:
-            acm_estimates += np.sum(out, 0)
-        n_epochs += len(epoch_block)
-    acm_estimates /= n_epochs
+            acm_estimates += np.sum(acms, 0)
+        n_blocks += len(blocks)
+    acm_estimates /= n_blocks
 
     var = VARBase(order)
     var.from_yw(acm_estimates)
@@ -84,7 +95,7 @@ def _fit_mvar_yw(data, pmin, pmax, n_jobs=1, verbose=None):
 @verbose
 def mvar_connectivity(data, method, order=(1, None), fitting_mode='lsq',
                       ridge=0, sfreq=2 * np.pi, fmin=0, fmax=np.inf, n_fft=64,
-                      n_surrogates=None, buffer_size=8, n_jobs=1,
+                      n_surrogates=None, buffer_size=8, n_jobs=1, blocksize=10,
                       verbose=None):
     """Estimate connectivity from multivariate autoregressive (MVAR) models.
 
@@ -149,6 +160,9 @@ def mvar_connectivity(data, method, order=(1, None), fitting_mode='lsq',
     n_jobs : int
         Number of jobs to run in parallel. This is used for model order
         selection and statistics calculations.
+    blocksize : int
+        Epochs are prozessed in batches of size blocksize. For best performance
+        set blocksize so that `n_epochs == n_jobs * blocksize`.
     verbose : bool, str, int, or None
         If not None, override default verbose level (see mne.verbose).
 
@@ -218,7 +232,8 @@ def mvar_connectivity(data, method, order=(1, None), fitting_mode='lsq',
 
     logger.info('MVAR fitting...')
     if fitting_mode == 'yw':
-        var = _fit_mvar_yw(data, pmin, pmax)
+        var = _fit_mvar_yw(data, pmin, pmax, n_jobs=n_jobs,
+                           blocksize=blocksize, verbose=verbose)
     elif fitting_mode == 'lsq':
         var = _fit_mvar_lsq(data, pmin, pmax, ridge, n_jobs=n_jobs,
                             verbose=scot_verbosity)
