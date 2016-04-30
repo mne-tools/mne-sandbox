@@ -57,7 +57,7 @@ def test_plot_connectivity_matrix():
     str2 = _plot_connectivity_matrix_nodename(2, 3, con, labels)
 
     assert_equal(str1, '')
-    assert_equal(str2, 'a --> b: 4')
+    assert_equal(str2, 'a --> b: 4.00')
 
 
 def test_plot_connectivity_inoutcircles():

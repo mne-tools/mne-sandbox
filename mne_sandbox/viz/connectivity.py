@@ -321,8 +321,8 @@ def _plot_connectivity_matrix_nodename(x, y, con, node_names):
     y = int(round(y) - 2)
     if x < 0 or y < 0 or x >= len(node_names) or y >= len(node_names):
         return ''
-    return '{} --> {}: {:.3g}'.format(node_names[x], node_names[y],
-                                      con[y + 2, x + 2])
+    return '%s --> %s: %.2f' % (node_names[x], node_names[y],
+                                con[y + 2, x + 2])
 
 
 def plot_connectivity_matrix(con, node_names, indices=None,
