@@ -5,6 +5,7 @@
 from __future__ import division
 import numpy as np
 import logging
+from types import GeneratorType
 
 from scot.varbase import VARBase
 from scot.var import VAR
@@ -15,13 +16,6 @@ from scot.utils import acm
 
 from mne.parallel import parallel_func
 from mne.utils import logger, verbose
-
-
-# todo: I'm sure we can import generator from somewhere...
-def _generator():
-    yield None
-generator = type(_generator())
-del _generator
 
 
 def _autocorrelations(epochs, max_lag):
@@ -69,7 +63,7 @@ def _fit_mvar_yw(data, pmin, pmax, n_jobs, blocksize, verbose=None):
                                   'automatic model order selection.')
     order = pmin
 
-    if not isinstance(data, generator):
+    if not isinstance(data, GeneratorType):
         blocksize = int(np.ceil(len(data) / n_jobs))
 
     parallel, block_autocorrelations, _ = \
