@@ -53,6 +53,7 @@ install:
     - source ${MNE_ROOT}/bin/mne_setup_sh;
     - conda install --yes --quiet $ENSURE_PACKAGES pandas$PANDAS scikit-learn$SKLEARN patsy h5py pillow;
     - pip install -q joblib nibabel;
+    - pip install -q scot==0.2.1
     - if [ "${PYTHON}" == "3.5" ]; then
         conda install --yes --quiet $ENSURE_PACKAGES ipython;
       else
