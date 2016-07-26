@@ -23,7 +23,7 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
 
     Parameters
     ----------
-    inst : an instance of Raw or Epochs
+    inst : an instance of Raw
         The data used to calculate PAC.
     f_phase : array, dtype float, shape (n_bands_phase, 2,)
         The frequency ranges to use for the phase carrier. PAC will be
@@ -121,9 +121,121 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
         return pac, freq_pac
 
 
+class PAC(object):
+    """A PAC estimator with a sklearn-style API.
+
+    This will return the PAC of each trial. It expects Raw-style data, and uses
+    event times to construct windows around each event onset.
+
+    Parameters
+    ----------
+    f_phase : array, dtype float, shape (n_bands_phase, 2,)
+        The frequency ranges to use for the phase carrier. PAC will be
+        calculated between n_bands_phase * n_bands_amp frequencies.
+    f_amp : array, dtype float, shape (n_bands_amp, 2,)
+        The frequency ranges to use for the phase-modulated amplitude.
+        PAC will be calculated between n_bands_phase * n_bands_amp frequencies.
+    ixs : array-like, shape (n_ch_pairs x 2)
+        The indices for low/high frequency channels. PAC will be estimated
+        between n_ch_pairs of channels. Indices correspond to rows of `data`.
+    sfreq : float
+        The sampling frequency of the data.
+    events : array, shape (n_events, 3) | array, shape (n_events,) | None
+        MNE events array. To be supplied if data is 2D and output should be
+        split by events. In this case, `tmin` and `tmax` must be provided. If
+        `ndim == 1`, it is assumed to be event indices, and all events will be
+        grouped together.
+    times : array, shape (n_times,) | None
+        An array of times corresponding to the final axis of inputs. Will be
+        used in conjunction with tmin/tmax if `events` is None.
+    pac_func : {'plv', 'glm', 'mi_canolty', 'mi_tort', 'ozkurt'}
+        The function for estimating PAC. Corresponds to functions in
+        `pacpy.pac`. Defaults to 'ozkurt'. If multiple frequency bands are used
+        then `plv` cannot be calculated.
+    tmin : float | list of floats, shape (n_pac_windows,) | None
+        If `events` is not provided, it is the start time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include before
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `min(inst.times)`.
+    tmax : float | list of floats, shape (n_pac_windows,) | None
+        If `events` is not provided, it is the stop time to use in `inst`.
+        If `events` is provided, it is the time (in seconds) to include after
+        each event index. If a list of floats is given, then PAC is calculated
+        for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
+    n_cycles_ph : float, int | array of floats, shape (n_bands_phase,)
+        The number of cycles to be included in the window for each band-pass
+        filter for phase. Defaults to 3.
+    n_cycles_am : float, int | array of floats, shape (n_bands_amp,)
+        The number of cycles to be included in the window for each band-pass
+        filter for amplitude. Defaults to 3.
+    scale_amp_func : None | function
+        If not None, will be called on each amplitude signal in order to scale
+        the values. Function must accept an N-D input and will operate on the
+        last dimension. E.g., `sklearn.preprocessing.scale`.
+        Defaults to no scaling.
+    n_jobs : int
+        Number of jobs to run in parallel. Defaults to 1.
+    """
+    def __init__(self, f_phase, f_amp, ixs, sfreq, events=None, times=None,
+                 pac_func='ozkurt', tmin=0., tmax=1., n_cycles_ph=3,
+                 n_cycles_am=3, scale_amp_func=None, n_jobs=1):
+        if self.events is not None and self.times is not None:
+            raise ValueError('Must supply one of events and times, not both')
+        self.f_phase = f_phase
+        self.f_amp = f_amp
+        self.ixs = ixs
+        self.sfreq = sfreq
+        self.pac_func = pac_func
+        self.events = events
+        self.times = times
+        self.tmin = tmin
+        self.tmax = tmax
+        self.n_cycles_ph = n_cycles_ph
+        self.n_cycles_am = n_cycles_am
+        self.scale_amp_func = scale_amp_func
+        self.n_jobs = n_jobs
+
+    def fit(self, X, y=None):
+        """Estimate PAC values.
+
+        Parameters
+        ----------
+        X : array, shape (n_channels, n_times) |
+                (n_epochs, n_channels, n_times)
+            The input data.
+        """
+        if self.events is not None:
+            if X.ndim == 3:
+                raise ValueError('If Events is not None, X must be 2D')
+            if self.events[:, 0].max() > X.shape[0]:
+                raise ValueError('Event index exceeds dimensions of X.')
+        if X.ndim == 2:
+            # Add an extra first dimension for the loop
+            X = [X]
+
+        pac = []
+        for ep_X in X:
+            # Output will be shape (n_epochs, n_ch_pair, n_fr_pair, n_ti_win)
+            i_pac = _phase_amplitude_coupling(
+                ep_X, self.sfreq, self.f_phase, self.f_amp, self.ixs,
+                self.pac_func, self.events, self.tmin, self.tmax, self.times,
+                self.n_cycles_ph, self.n_cycles_am, self.scale_amp_func)
+            # Reshape PAC so it's 2D and first dimension is Epochs
+            pac.append(i_pac.reshape(pac.shape[0], -1))
+        self.pac = np.asarray(pac)
+
+    def transform(X=None, y=None, self):
+        """Return the PAC values."""
+        return self.pac
+
+    def fit_transform(self, X, y=None):
+        self.fit(X)
+        return self.transform()
+
+
 def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
                               pac_func='ozkurt', events=None,
-                              tmin=None, tmax=None, n_cycles_ph=3,
+                              tmin=None, tmax=None, times=None, n_cycles_ph=3,
                               n_cycles_am=3, scale_amp_func=None,
                               return_data=False, concat_epochs=False,
                               n_jobs=1, verbose=None):
@@ -131,7 +243,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
 
     Parameters
     ----------
-    data : array, shape ([n_epochs], n_channels, n_times)
+    data : array, shape (n_channels, n_times)
         The data used to calculate PAC
     sfreq : float
         The sampling frequency of the data.
@@ -164,6 +276,9 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         If `events` is provided, it is the time (in seconds) to include after
         each event index. If a list of floats is given, then PAC is calculated
         for each pair of `tmin` and `tmax`. Defaults to `max(inst.n_times)`.
+    times : array, shape (n_times,) | None
+        An array of times corresponding to the final axis of inputs. Will be
+        used in conjunction with tmin/tmax if `events` is None.
     n_cycles_ph : float, int | array of floats, shape (n_bands_phase,)
         The number of cycles to be included in the window for each band-pass
         filter for phase. Defaults to 3.
@@ -281,6 +396,10 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
             i_f_data_ph, mne.create_info(i_f_data_ph.shape[0], sfreq))
         i_f_data_am = mne.io.RawArray(
             i_f_data_am, mne.create_info(i_f_data_am.shape[0], sfreq))
+        if times is not None:
+            # For future support w/ Epochs as inputs
+            i_f_data_ph.times = times
+            i_f_data_am.times = times
 
         # Turn into Epochs if we have defined events
         if events is not None:
