@@ -103,9 +103,10 @@ def phase_amplitude_coupling(inst, f_phase, f_amp, ixs, pac_func='ozkurt',
         raise ValueError('Must supply Raw as input')
     sfreq = inst.info['sfreq']
     data = inst[:][0]
+    times = inst.times if events is None else None
     pac = _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
                                     pac_func=pac_func, events=events,
-                                    tmin=tmin, tmax=tmax,
+                                    tmin=tmin, tmax=tmax, times=times,
                                     n_cycles_ph=n_cycles_ph,
                                     n_cycles_am=n_cycles_am,
                                     scale_amp_func=scale_amp_func,
@@ -140,11 +141,6 @@ class PAC(object):
         between n_ch_pairs of channels. Indices correspond to rows of `data`.
     sfreq : float
         The sampling frequency of the data.
-    events : array, shape (n_events, 3) | array, shape (n_events,) | None
-        MNE events array. To be supplied if data is 2D and output should be
-        split by events. In this case, `tmin` and `tmax` must be provided. If
-        `ndim == 1`, it is assumed to be event indices, and all events will be
-        grouped together.
     times : array, shape (n_times,) | None
         An array of times corresponding to the final axis of inputs. Will be
         used in conjunction with tmin/tmax if `events` is None.
@@ -176,26 +172,37 @@ class PAC(object):
     n_jobs : int
         Number of jobs to run in parallel. Defaults to 1.
     """
-    def __init__(self, f_phase, f_amp, ixs, sfreq, events=None, times=None,
+    def __init__(self, f_phase, f_amp, ixs, sfreq, times,
                  pac_func='ozkurt', tmin=0., tmax=1., n_cycles_ph=3,
                  n_cycles_am=3, scale_amp_func=None, n_jobs=1):
-        if self.events is not None and self.times is not None:
-            raise ValueError('Must supply one of events and times, not both')
+        events, times, tmin, tmax = _check_pac_times(None, times, tmin, tmax)
+        (ixs, f_phase, f_amp, n_cycles_ph,
+         n_cycles_am, pac_func) = _check_pac_data(
+            ixs, f_phase, f_amp, n_cycles_ph, n_cycles_am, pac_func)
+
         self.f_phase = f_phase
         self.f_amp = f_amp
+        self.tmin = tmin
+        self.tmax = tmax
+        self.times = times
         self.ixs = ixs
         self.sfreq = sfreq
         self.pac_func = pac_func
-        self.events = events
-        self.times = times
-        self.tmin = tmin
-        self.tmax = tmax
         self.n_cycles_ph = n_cycles_ph
         self.n_cycles_am = n_cycles_am
         self.scale_amp_func = scale_amp_func
         self.n_jobs = n_jobs
 
-    def fit(self, X, y=None):
+    def fit(self, X=None, y=None):
+        """
+        Parameters
+        ----------
+        X : None | array
+        y : None | array
+        """
+        return self
+
+    def transform(self, X, y=None):
         """Estimate PAC values.
 
         Parameters
@@ -203,34 +210,35 @@ class PAC(object):
         X : array, shape (n_channels, n_times) |
                 (n_epochs, n_channels, n_times)
             The input data.
+        y : None | array
         """
-        if self.events is not None:
-            if X.ndim == 3:
-                raise ValueError('If Events is not None, X must be 2D')
-            if self.events[:, 0].max() > X.shape[0]:
-                raise ValueError('Event index exceeds dimensions of X.')
-        if X.ndim == 2:
-            # Add an extra first dimension for the loop
-            X = [X]
+        n_ep = X.shape[0]
+        n_f_pairs = len(self.f_amp) * len(self.f_phase)
+        n_t_wins = len(self.tmin)
+        n_ch_pairs = len(self.ixs)
 
-        pac = []
-        for ep_X in X:
+        pac = np.zeros([X.shape[0], n_f_pairs * n_t_wins * n_ch_pairs])
+        for ii, ep_X in enumerate(X):
             # Output will be shape (n_epochs, n_ch_pair, n_fr_pair, n_ti_win)
             i_pac = _phase_amplitude_coupling(
                 ep_X, self.sfreq, self.f_phase, self.f_amp, self.ixs,
-                self.pac_func, self.events, self.tmin, self.tmax, self.times,
-                self.n_cycles_ph, self.n_cycles_am, self.scale_amp_func)
+                self.pac_func, None, self.tmin, self.tmax, self.times,
+                self.n_cycles_ph, self.n_cycles_am, self.scale_amp_func)[0]
             # Reshape PAC so it's 2D and first dimension is Epochs
-            pac.append(i_pac.reshape(pac.shape[0], -1))
-        self.pac = np.asarray(pac)
+            pac[ii, :] = i_pac.reshape(1, n_f_pairs * n_t_wins * n_ch_pairs)
+        return pac
 
-    def transform(X=None, y=None, self):
-        """Return the PAC values."""
-        return self.pac
+    def fit_transform(self, X, y=None, times=None):
+        """Estimate PAC values.
 
-    def fit_transform(self, X, y=None):
-        self.fit(X)
-        return self.transform()
+        Parameters
+        ----------
+        X : array, shape (n_channels, n_times) |
+                (n_epochs, n_channels, n_times)
+            The input data.
+        y : None | array
+        """
+        return self.transform(X)
 
 
 def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
@@ -319,42 +327,15 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         amplitude signals (second column of `ixs`).
     """
     from ..externals.pacpy import pac as ppac
-    pac_func = np.atleast_1d(pac_func)
-    for i_func in pac_func:
-        if i_func not in _pac_funcs:
-            raise ValueError("PAC function %s is not supported" % i_func)
-    n_pac_funcs = pac_func.shape[0]
-    ixs = np.array(ixs, ndmin=2)
-    n_ch_pairs = ixs.shape[0]
-    tmin = 0 if tmin is None else tmin
-    tmin = np.atleast_1d(tmin)
-    n_pac_windows = len(tmin)
-    tmax = (data.shape[-1] - 1) / float(sfreq) if tmax is None else tmax
-    tmax = np.atleast_1d(tmax)
-    f_phase = np.atleast_2d(f_phase)
-    f_amp = np.atleast_2d(f_amp)
-    n_cycles_ph = np.atleast_1d(n_cycles_ph)
-    n_cycles_am = np.atleast_1d(n_cycles_am)
-    if n_cycles_ph.shape[0] == 1:
-        n_cycles_ph = np.repeat(n_cycles_ph, f_phase.shape[0])
-    if n_cycles_am.shape[0] == 1:
-        n_cycles_am = np.repeat(n_cycles_am, f_amp.shape[0])
-
+    # Data prep + checks
     if data.ndim != 2:
         raise ValueError('Data must be shape (n_channels, n_times)')
-    if ixs.shape[1] != 2:
-        raise ValueError('Indices must have have a 2nd dimension of length 2')
-    if f_phase.shape[-1] != 2 or f_amp.shape[-1] != 2:
-        raise ValueError('Frequencies must be specified w/ a low/hi tuple')
-    if len(tmin) != len(tmax):
-        raise ValueError('tmin and tmax have differing lengths')
-    if any(i_f.shape[0] > 1 and 'plv' in pac_func for i_f in (f_amp, f_phase)):
-        raise ValueError('If calculating PLV, must use a single pair of freqs')
-    for icyc, i_f in zip([n_cycles_ph, n_cycles_am], [f_phase, f_amp]):
-        if icyc.shape[0] != i_f.shape[0]:
-            raise ValueError("n_cycles must match n_freq_bands")
-        if icyc.ndim > 1:
-            raise ValueError("n_cycles must be 1-d, not {}d".format(icyc.ndim))
+    events, times, tmin, tmax = _check_pac_times(events, times, tmin, tmax)
+    ixs, f_phase, f_amp, n_cycles_ph, n_cycles_am, pac_func = _check_pac_data(
+        ixs, f_phase, f_amp, n_cycles_ph, n_cycles_am, pac_func)
+    n_pac_funcs = pac_func.shape[0]
+    n_ch_pairs = ixs.shape[0]
+    n_pac_windows = len(tmin)
 
     logger.info('Pre-filtering data and extracting phase/amplitude...')
     hi_phase = np.unique([i_func in _hi_phase_funcs for i_func in pac_func])
@@ -370,10 +351,7 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
     if events is None:
         n_epochs = 1
     elif concat_epochs is True:
-        if events.ndim == 1:
-            n_epochs = 1
-        else:
-            n_epochs = np.unique(events[:, -1]).shape[0]
+        n_epochs = np.unique(events[:, -1]).shape[0]
     else:
         n_epochs = events.shape[0]
 
@@ -396,13 +374,12 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
             i_f_data_ph, mne.create_info(i_f_data_ph.shape[0], sfreq))
         i_f_data_am = mne.io.RawArray(
             i_f_data_am, mne.create_info(i_f_data_am.shape[0], sfreq))
-        if times is not None:
-            # For future support w/ Epochs as inputs
-            i_f_data_ph.times = times
-            i_f_data_am.times = times
-
-        # Turn into Epochs if we have defined events
-        if events is not None:
+        if events is None:
+            # For future support w/ Epochs as inputs, we manually put in times
+            i_f_data_ph._times = times
+            i_f_data_am._times = times
+        else:
+            # Turn into Epochs if we have defined events
             i_f_data_ph = _raw_to_epochs_mne(i_f_data_ph, events, tmin, tmax)
             i_f_data_am = _raw_to_epochs_mne(i_f_data_am, events, tmin, tmax)
 
@@ -451,16 +428,78 @@ def _phase_amplitude_coupling(data, sfreq, f_phase, f_amp, ixs,
         return pac, freq_pac
 
 
+def _check_pac_times(events, times, tmin, tmax):
+    # Times and time windows
+    err = 'Must supply one of events or times (not both)'
+    if all(ii is not None for ii in [events, times]):
+        raise ValueError(err)
+    if all(ii is None for ii in [events, times]):
+        raise ValueError(err)
+    if events is not None:
+        events = np.atleast_1d(events)
+        if events.ndim == 1:
+            events = np.vstack([events, np.zeros_like(events),
+                                np.ones_like(events)]).T
+        if events.ndim != 2:
+            raise ValueError('events have incorrect number of dimensions')
+        if events.shape[-1] != 3:
+            raise ValueError('events have incorrect number of columns')
+        if any([ii is None for ii in [tmin, tmax]]):
+            raise ValueError('If events is given, tmin/tmax must be given.')
+    if times is not None:
+        if times.ndim != 1:
+            raise ValueError('times must be 1D')
+        tmin = times.min() if tmin is None else tmin
+        tmax = times.max() if tmax is None else tmax
+        if np.min(tmin) < times.min():
+            raise ValueError('tmin is less than times.min()')
+        if np.max(tmax) > times.max():
+            raise ValueError('tmax is greater than times.max()')
+    tmin = np.atleast_1d(tmin)
+    tmax = np.atleast_1d(tmax)
+    if len(tmin) != len(tmax):
+        raise ValueError('tmin and tmax have differing lengths')
+    return events, times, tmin, tmax
+
+
+def _check_pac_data(ixs, f_phase, f_amp, n_cycles_ph, n_cycles_am, pac_func):
+    # PAC channel indices
+    ixs = np.array(ixs, ndmin=2)
+    if ixs.shape[1] != 2:
+        raise ValueError('Indices must have have a 2nd dimension of length 2')
+
+    # Frequency pairs
+    f_phase = np.atleast_2d(f_phase)
+    f_amp = np.atleast_2d(f_amp)
+    n_cycles_ph = np.atleast_1d(n_cycles_ph)
+    n_cycles_am = np.atleast_1d(n_cycles_am)
+    if n_cycles_ph.shape[0] == 1:
+        n_cycles_ph = np.repeat(n_cycles_ph, f_phase.shape[0])
+    if n_cycles_am.shape[0] == 1:
+        n_cycles_am = np.repeat(n_cycles_am, f_amp.shape[0])
+
+    if f_phase.shape[-1] != 2 or f_amp.shape[-1] != 2:
+        raise ValueError('Frequencies must be specified w/ a low/hi tuple')
+
+    for icyc, i_f in zip([n_cycles_ph, n_cycles_am], [f_phase, f_amp]):
+        if icyc.shape[0] != i_f.shape[0]:
+            raise ValueError("n_cycles must match n_freq_bands")
+        if icyc.ndim > 1:
+            raise ValueError("n_cycles must be 1-d, not {}d".format(icyc.ndim))
+
+    # PAC function strings
+    pac_func = np.atleast_1d(pac_func)
+    for i_func in pac_func:
+        if i_func not in _pac_funcs:
+            raise ValueError("PAC function %s is not supported" % i_func)
+    if any(i_f.shape[0] > 1 and 'plv' in pac_func for i_f in (f_amp, f_phase)):
+        raise ValueError('If calculating PLV, must use a single pair of freqs')
+
+    return ixs, f_phase, f_amp, n_cycles_ph, n_cycles_am, pac_func
+
+
 def _raw_to_epochs_mne(raw, events, tmin, tmax):
     """Convert Raw data to Epochs w/ some time checks."""
-    events = np.atleast_1d(events)
-    if events.ndim == 1:
-        events = np.vstack([events, np.zeros_like(events),
-                            np.ones_like(events)]).T
-    if events.ndim != 2:
-        raise ValueError('events have incorrect number of dimensions')
-    if events.shape[-1] != 3:
-        raise ValueError('events have incorrect number of columns')
     # Convert to Epochs using the event times
     tmin_all = np.min(tmin)
     tmax_all = np.max(tmax) + (1. / raw.info['sfreq'])
@@ -726,7 +765,7 @@ def _pull_data(inst, ix_ph, ix_amp, events=None, tmin=None, tmax=None):
     return data_ph, data_am
 
 
-def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
+def _band_pass_pac(x, f_range, sfreq=1000., n_cycles=3):
     """
     Band-pass filter a signal using PacPy for PAC coupling.
 
@@ -753,7 +792,6 @@ def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
         Filtered time series.
     """
     from ..externals.pacpy.filt import firwin, filtfilt
-
     if n_cycles <= 0:
         raise ValueError(
             'Number of cycles in a filter must be a positive number.')
@@ -773,7 +811,8 @@ def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
 
     # Perform filtering
     taps = firwin(n_taps, np.array(f_range) / nyq, pass_zero=False)
-    x_filt = filtfilt(taps, [1], x)
+    padlen = len(taps)  # To accomodate shorter signals (epochs)
+    x_filt = filtfilt(taps, [1], x, padlen=padlen)
 
     if any(np.isnan(x_filt)):
         raise RuntimeError(
