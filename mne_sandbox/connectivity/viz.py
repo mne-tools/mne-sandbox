@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def plot_phase_locked_amplitude(epochs, freqs_phase, freqs_amp,
@@ -41,6 +40,7 @@ def plot_phase_locked_amplitude(epochs, freqs_phase, freqs_amp,
     axs : array of matplotlib axes
         The axes used for plotting.
     """
+    import matplotlib.pyplot as plt
     from .cfc import phase_locked_amplitude
     from sklearn.preprocessing import scale
     amp_kwargs = dict() if amp_kwargs is None else amp_kwargs
@@ -114,6 +114,7 @@ def plot_phase_binned_amplitude(epochs, freqs_phase, freqs_amp,
     ax : matplotlib axis
         The axis used for plotting.
     """
+    import matplotlib.pyplot as plt
     from .cfc import phase_binned_amplitude
     from sklearn.preprocessing import RobustScaler
     amps, bins = phase_binned_amplitude(epochs, freqs_phase, freqs_amp,
