@@ -1,7 +1,6 @@
 import numpy as np
-from nose.tools import (assert_true, assert_almost_equal,
-                        assert_raises, assert_equal)
-from numpy.testing import (assert_allclose)
+from nose.tools import (assert_true, assert_raises, assert_equal)
+from numpy.testing import (assert_allclose, assert_almost_equal)
 import mne
 
 from mne_sandbox.preprocessing.bads.faster_ import (_hurst, _freqs_power)
@@ -10,7 +9,7 @@ from mne_sandbox.preprocessing.bads import (find_bad_channels, find_bad_epochs,
 
 # Signal properties used in the tests
 length = 2  # in seconds
-srate = 200. # in Hertz
+srate = 200.  # in Hertz
 n_channels = 32
 n_epochs = 100
 n_samples = int(length * srate)
@@ -53,11 +52,11 @@ def test_freqs_power():
 
     # These frequencies should be present
     for f in freqs:
-        assert_almost_equal(_freqs_power(signal, srate, [f]), 3 + 1/3.)
+        assert_almost_equal(_freqs_power(signal, srate, [f]), 3 + 1 / 3.)
 
     # The function should sum the individual frequency  powers
     assert_almost_equal(_freqs_power(signal, srate, freqs),
-                        len(freqs) * (3 + 1/3.))
+                        len(freqs) * (3 + 1 / 3.))
 
     # These frequencies should not be present
     assert_almost_equal(_freqs_power(signal, srate, [2, 4, 13, 23, 35]), 0)
@@ -162,7 +161,7 @@ def test_find_bad_channels_in_epochs():
     signal[1, 1, :] += 20
 
     # This channel/epoch combination has a single spike
-    signal[2, 2, 0] += 10
+    signal[2, 2, 0] += 100
 
     # This channel/epoch combination has excessive 50 Hz line noise
     signal[3, 3, :] += np.sin(50 * 2 * np.pi * time)
@@ -186,3 +185,55 @@ def test_find_bad_channels_in_epochs():
     assert_equal(bads['amplitude'][2], [])
     assert_equal(bads['median_gradient'][0], [])
     assert_equal(bads['line_noise'][3], ['3'])
+
+
+def test_distance_correction():
+    """Test correcting for the distance of each electrode to the reference"""
+    signal, noise = _baseline_signal()
+    epochs = _to_epochs(signal, noise)
+    for ch in range(32):
+        # Set electrode position and reference position
+        epochs.info['chs'][ch]['loc'] = [
+            np.sin(ch * np.pi / 32.),  # x
+            np.cos(ch * np.pi / 32.),  # y
+            0.,  # z
+            0., 1., 0.  # x,y,z for reference electrode
+        ]
+
+        # Make the signal amplitude increase with the distance to the sensor.
+        # This is not noise, but a natural phenomenon.
+        epochs._data[:, ch, :] *= ch
+
+    # Add extra noise to channel 3 for all epochs
+    epochs._data[:, 3, :] *= 5
+
+    # Add extra noise to channel 5 for epoch 3
+    epochs._data[3, 5, :] *= 5
+
+    # Without distance correction, channel 3 is not marked as bad
+    bads = find_bad_channels(
+        epochs,
+        method_params={'eeg_ref_corr': False, 'use_metrics': ['variance']},
+    )
+    assert_equal(bads, [])
+
+    # With distance correction, channel 3 is correctly found
+    bads = find_bad_channels(
+        epochs,
+        method_params={'eeg_ref_corr': True, 'use_metrics': ['variance']},
+    )
+    assert_equal(bads, ['3'])
+
+    # Without distance correction, channel 5 is not marked as bad in epoch 3
+    bads = find_bad_channels_in_epochs(
+        epochs,
+        method_params={'eeg_ref_corr': False, 'use_metrics': ['variance']},
+    )
+    assert_equal(bads[3], [])
+
+    # With distance correction, channel 5 is correctly found in epoch 3
+    bads = find_bad_channels_in_epochs(
+        epochs,
+        method_params={'eeg_ref_corr': True, 'use_metrics': ['variance']},
+    )
+    assert_equal(bads[3], ['5'])

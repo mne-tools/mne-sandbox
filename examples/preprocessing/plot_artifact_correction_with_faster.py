@@ -3,7 +3,7 @@
 EEG artifact correction using FASTER
 ====================================
 
-In this example, a variety of metrics are use to detect channels and epochs
+In this example, a variety of metrics are used to detect channels and epochs
 that contain artifacts. Rejection and interpolation are used to clean the EEG
 data.
 
@@ -15,9 +15,10 @@ References
 """
 import mne
 from mne import io
-from mne.preprocessing import (find_bad_channels, find_bad_epochs,
-                               find_bad_channels_in_epochs)
 from mne.datasets import sample
+
+from mne_sandbox.preprocessing import (find_bad_channels, find_bad_epochs,
+                                       find_bad_channels_in_epochs)
 
 # Load raw data
 data_path = sample.data_path()
@@ -51,6 +52,7 @@ epochs = mne.Epochs(raw, events, event_ids, tmin, tmax, baseline=(None, 0),
 
 # Compute evoked before cleaning, using an average EEG reference
 epochs_before = epochs.copy()
+epochs_before.info['custom_ref_applied'] = False
 epochs_before, _ = io.set_eeg_reference(epochs_before)
 epochs_before.apply_proj()
 evoked_before = epochs_before.average()
@@ -59,25 +61,28 @@ evoked_before = epochs_before.average()
 # Clean the data using FASTER
 
 # Step 1: mark bad channels
-epochs.info['bads'] = find_bad_channels(epochs)
+epochs.info['bads'] = find_bad_channels(epochs,
+                                        method_params={'eeg_ref_corr': True})
 if len(epochs.info['bads']) > 0:
     epochs.interpolate_bads()
 
 # Step 2: mark bad epochs
 bad_epochs = find_bad_epochs(epochs)
 if len(bad_epochs) > 0:
-    epochs.drop_epochs(bad_epochs)
+    epochs.drop(bad_epochs)
 
 # Step 3: mark bad channels for each epoch and interpolate them.
-bad_channels_per_epoch = find_bad_channels_in_epochs(epochs)
+bad_channels_per_epoch = find_bad_channels_in_epochs(
+    epochs, method_params={'eeg_ref_corr': True})
 for i, b in enumerate(bad_channels_per_epoch):
     if len(b) > 0:
         ep = epochs[i]
         ep.info['bads'] = b
         ep.interpolate_bads() 
-        ep._data[i, :, :] = ep._data[0, :, :]
+        epochs._data[i, :, :] = ep._data[0, :, :]
 
 # Compute evoked after cleaning, using an average EEG reference
+epochs.info['custom_ref_applied'] = False
 epochs, _ = io.set_eeg_reference(epochs)
 epochs.apply_proj()
 evoked_after = epochs.average()

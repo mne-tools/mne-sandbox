@@ -12,7 +12,7 @@ DEFAULTS = dict(
                      'line_noise'],
         thresh=3,
         max_iter=1,
-        eeg_ref=None,
+        eeg_ref_corr=False,
     ),
     bad_epochs_faster=dict(
         use_metrics=['amplitude', 'variance', 'deviation'],
@@ -24,6 +24,7 @@ DEFAULTS = dict(
                      'line_noise'],
         thresh=3,
         max_iter=1,
+        eeg_ref_corr=False,
     ),
 )
 

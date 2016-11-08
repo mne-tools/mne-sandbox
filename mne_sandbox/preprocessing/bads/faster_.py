@@ -9,6 +9,49 @@ from mne.io.pick import pick_info, _picks_by_type
 from .outliers import find_outliers
 
 
+def _distance_correction(info, picks, x):
+    """Remove the effect of distance to reference sensor.
+
+    Computes the distance of each sensor to the reference sensor. Then
+    regresses the effect of this distance out of the values in x.
+
+    Parameters
+    ----------
+    info : instance of Info
+        The measurement info. This should contain positions for all the
+        sensors.
+    picks : list of int
+        Indices of the channels that correspond to the values in x.
+    x : list of float
+        Values to correct.
+
+    Returns
+    -------
+    x_corr : list of float
+        values in x corrected for the distance to reference sensor.
+    """
+    pos = np.array([info['chs'][ch]['loc'][:3] for ch in picks])
+    ref_pos = np.array([info['chs'][ch]['loc'][3:6] for ch in picks])
+
+    if np.any(np.all(pos == 0, axis=1)):
+        raise ValueError('Cannot perform correction for distance to reference '
+                         'sensor: not all selected channels have position '
+                         'information.')
+    if np.any(np.all(ref_pos == 0, axis=1)):
+        raise ValueError('Cannot perform correction for distance to reference '
+                         'sensor: the location of the reference sensor is not '
+                         'specified for all selected channels.')
+
+    # Compute angular distances to the reference sensor
+    pos /= np.linalg.norm(pos, axis=1)[:, np.newaxis]
+    ref_pos /= np.linalg.norm(ref_pos, axis=1)[:, np.newaxis]
+    angles = [np.arccos(np.dot(a, b)) for a, b in zip(pos, ref_pos)]
+
+    # Fit a quadratic curve to correct for the angular distance
+    fit = np.polyfit(angles, x, 2)
+    return x - np.polyval(fit, angles)
+
+
 def _hurst(x):
     """Estimate Hurst exponent on a timeseries.
 
@@ -154,9 +197,10 @@ def _deviation(data):
     return ch_mean - np.mean(ch_mean, axis=0)
 
 
-def _find_bad_channels(epochs, picks, use_metrics, thresh, max_iter, eeg_ref):
+def _find_bad_channels(epochs, picks, use_metrics, thresh, max_iter,
+                       eeg_ref_corr):
     """Automatically find and mark bad channels.
-    
+
     Implements the first step of the FASTER algorithm.
 
     This function attempts to automatically mark bad channels by performing
@@ -175,13 +219,12 @@ def _find_bad_channels(epochs, picks, use_metrics, thresh, max_iter, eeg_ref):
     max_iter : int
         The maximum number of iterations performed during outlier detection
         (defaults to 1, as in the original FASTER paper).
-    eeg_ref : str | None
-        If the EEG data has been referenced using a single electrode, specify
-        the name of the reference channel here. This will enable a correction
-        factor for the distance of each electrode to the reference. If an
-        average reference is applied, or the mean of multiple reference
-        electrodes, set this parameter to `None`. Defaults to `None`, which
-        disables the correction.
+    eeg_ref_corr : bool
+        If the EEG data has been referenced using a single electrode setting
+        this parameter to True will enable a correction factor for the distance
+        of each electrode to the reference. If an average reference is applied,
+        or the mean of multiple reference electrodes, set this parameter to
+        False. Defaults to False, which disables the correction.
     """
     from scipy.stats import kurtosis
     metrics = {
@@ -209,6 +252,8 @@ def _find_bad_channels(epochs, picks, use_metrics, thresh, max_iter, eeg_ref):
         logger.info('Bad channel detection on %s channels:' % ch_type.upper())
         for metric in use_metrics:
             scores = metrics[metric](data[chs])
+            if eeg_ref_corr:
+                scores = _distance_correction(epochs.info, picks, scores)
             bad_channels = [epochs.ch_names[picks[chs[i]]]
                             for i in find_outliers(scores, thresh, max_iter)]
             logger.info('\tBad by %s: %s' % (metric, bad_channels))
@@ -220,7 +265,7 @@ def _find_bad_channels(epochs, picks, use_metrics, thresh, max_iter, eeg_ref):
 
 def _find_bad_epochs(epochs, picks, use_metrics, thresh, max_iter):
     """Automatically find and mark bad epochs.
-    
+
     Implements the second step of the FASTER algorithm.
 
     This function attempts to automatically mark bad epochs by performing
@@ -264,9 +309,10 @@ def _find_bad_epochs(epochs, picks, use_metrics, thresh, max_iter):
     return bads
 
 
-def _find_bad_channels_in_epochs(epochs, picks, use_metrics, thresh, max_iter):
+def _find_bad_channels_in_epochs(epochs, picks, use_metrics, thresh, max_iter,
+                                 eeg_ref_corr):
     """Automatically find and mark bad channels in each epoch.
-    
+
     Implements the fourth step of the FASTER algorithm.
 
     This function attempts to automatically mark bad channels in each epoch by
@@ -284,6 +330,12 @@ def _find_bad_channels_in_epochs(epochs, picks, use_metrics, thresh, max_iter):
     max_iter : int
         The maximum number of iterations performed during outlier detection
         (defaults to 1, as in the original FASTER paper).
+    eeg_ref_corr : bool
+        If the EEG data has been referenced using a single electrode setting
+        this parameter to True will enable a correction factor for the distance
+        of each electrode to the reference. If an average reference is applied,
+        or the mean of multiple reference electrodes, set this parameter to
+        False. Defaults to False, which disables the correction.
     """
 
     metrics = {
@@ -309,10 +361,10 @@ def _find_bad_channels_in_epochs(epochs, picks, use_metrics, thresh, max_iter):
             logger.info('Bad channel-in-epoch detection on %s channels:'
                         % ch_type.upper())
             s_epochs = metrics[metric](data[:, chs])
-            for i_epochs, epoch in enumerate(s_epochs):
-                if metric == 'line_noise':
-                    print i_epochs, epoch
-                outliers = find_outliers(epoch, thresh, max_iter)
+            for i_epochs, scores in enumerate(s_epochs):
+                if eeg_ref_corr:
+                    scores = _distance_correction(epochs.info, picks, scores)
+                outliers = find_outliers(scores, thresh, max_iter)
                 if len(outliers) > 0:
                     bad_segment = [ch_names[k] for k in outliers]
                     logger.info('Epoch %d, Bad by %s:\n\t%s' % (

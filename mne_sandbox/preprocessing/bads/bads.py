@@ -43,13 +43,13 @@ def find_bad_channels(epochs, picks=None, method='faster', method_params=None,
         max_iter : int
             The maximum number of iterations performed during outlier detection
             (defaults to 1, as in the original FASTER paper).
-        eeg_ref : str | None
-            If the EEG data has been referenced using a single electrode,
-            specify the name of the reference channel here. This will enable a
-            correction factor for the distance of each electrode to the
-            reference. If an average reference is applied, or the mean of
-            multiple reference electrodes, set this parameter to None. Defaults
-            to None, which disables the correction.
+        eeg_ref_corr : bool
+            If the EEG data has been referenced using a single electrode
+            setting this parameter to True will enable a correction factor for
+            the distance of each electrode to the reference. If an average
+            reference is applied, or the mean of multiple reference electrodes,
+            set this parameter to False. Defaults to False, which disables the
+            correction.
 
     return_by_metric : bool
         Whether to return the bad channels as a flat list (False, default) or
@@ -78,7 +78,8 @@ def find_bad_channels(epochs, picks=None, method='faster', method_params=None,
     """
     if picks is None:
         picks = pick_types(epochs.info, meg=True, eeg=True, exclude=[])
-    _method_params = _handle_default('bad_channels' + '_' + method, method_params)
+    _method_params = _handle_default('bad_channels' + '_' + method,
+                                     method_params)
     if method == 'faster':
         bads = _faster._find_bad_channels(epochs, picks, **_method_params)
     else:
@@ -151,7 +152,8 @@ def find_bad_epochs(epochs, picks=None, return_by_metric=False,
     """
     if picks is None:
         picks = pick_types(epochs.info, meg=True, eeg=True, exclude='bads')
-    _method_params = _handle_default('bad_epochs' + '_' + method, method_params)
+    _method_params = _handle_default('bad_epochs' + '_' + method,
+                                     method_params)
     if method == 'faster':
         bads = _faster._find_bad_epochs(epochs, picks, **_method_params)
     else:
@@ -189,7 +191,8 @@ def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
         defaults to the following parameters. Partial updates are supported.
         use_metrics : list of str
             List of metrics to use. Can be any combination of:
-            'amplitude', 'variance', 'deviation', 'median_gradient', 'line_noise'
+            'amplitude', 'variance', 'deviation', 'median_gradient',
+            'line_noise'
             Defaults to all of them.
         thresh : float
             The threshold value, in standard deviations, to apply. A channel
@@ -197,6 +200,13 @@ def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
         max_iter : int
             The maximum number of iterations performed during outlier detection
             (defaults to 1, as in the original FASTER paper).
+        eeg_ref_corr : bool
+            If the EEG data has been referenced using a single electrode
+            setting this parameter to True will enable a correction factor for
+            the distance of each electrode to the reference. If an average
+            reference is applied, or the mean of multiple reference electrodes,
+            set this parameter to False. Defaults to False, which disables the
+            correction.
 
     return_by_metric : bool
         Whether to return the bad channels as a flat list (False, default) or
@@ -223,7 +233,8 @@ def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
     if picks is None:
         picks = pick_types(epochs.info, meg=True, eeg=True, exclude=[])
 
-    _method_params = _handle_default('bad_channels_in_epochs' + '_' + method, method_params)
+    _method_params = _handle_default('bad_channels_in_epochs' + '_' + method,
+                                     method_params)
     if method == 'faster':
         bads = _faster._find_bad_channels_in_epochs(epochs, picks,
                                                     **_method_params)
@@ -235,7 +246,7 @@ def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
     if return_by_metric:
         bads = dict((m, _bad_mask_to_names(info, v)) for m, v in bads.items())
     else:
-        bads = np.sum(bads.values(), axis=0).astype(bool)
+        bads = np.sum(list(bads.values()), axis=0).astype(bool)
         bads = _bad_mask_to_names(info, bads)
 
     return bads
