@@ -7,18 +7,19 @@
 import numpy as np
 import mne
 from nose.tools import assert_true, assert_raises, assert_equal
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 from mne_sandbox.connectivity import (phase_amplitude_coupling,
                                       phase_locked_amplitude,
                                       phase_binned_amplitude,
-                                      simulate_pac_signal)
+                                      simulate_pac_signal, PAC)
+from mne_sandbox.connectivity.cfc import _phase_amplitude_coupling
 from sklearn.preprocessing import scale
 
 np.random.seed(1337)
 pac_func = 'ozkurt'
 f_phase = 4
 f_amp = 40
-eptmin, eptmax = 1, 5
+eptmin, eptmax = 0, 5
 min_pac = .05
 max_pac = .3
 
@@ -33,7 +34,7 @@ mag_am = 1
 # These are the times where PAC is active in our simulated signal
 n_secs = 20.
 time = np.arange(0, n_secs, 1. / sfreq)
-event_times = np.arange(1, 18, 4)
+event_times = np.arange(1, 14, 4)
 events = (event_times * sfreq).astype(int)
 event_dur = 2.
 
@@ -51,7 +52,7 @@ _, lo_none, hi_none = simulate_pac_signal(time, f_phase, f_amp, mag_ph,
 signal_a = lo_pac + hi_none
 signal_b = lo_none + hi_pac
 
-info = mne.create_info(['pac_hi', 'pac_lo'], sfreq, 'eeg')
+info = mne.create_info(['pac_hi', 'pac_lo'], sfreq, 'ecog')
 raw = mne.io.RawArray([signal_a, signal_b], info)
 events = np.vstack([events, np.zeros_like(events), np.ones_like(events)]).T
 epochs = mne.Epochs(raw, events, tmin=eptmin, tmax=eptmax, baseline=None)
@@ -64,15 +65,19 @@ def test_phase_amplitude_coupling():
     ixs_pac = [0, 1]
     ixs_no_pac = [1, 0]
 
-    assert_raises(ValueError,
-                  phase_amplitude_coupling, epochs, f_band_lo,
+    assert_raises(ValueError, phase_amplitude_coupling, epochs, f_band_lo,
                   f_band_hi, ixs_pac)
+    assert_raises(ValueError, _phase_amplitude_coupling, epochs.get_data()[0],
+                  epochs.info['sfreq'], f_band_lo, f_band_hi, ixs_pac)
 
     # Testing Raw
     conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func)
     assert_true(conn.mean() < min_pac)
     assert_equal(conn.shape, (1, 1, 1, 1))
+    # Make sure it also works w/ PLV for high-freq phase calculation
+    conn, _ = phase_amplitude_coupling(
+        raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func='plv')
 
     # Testing Raw + multiple times
     conn, _ = phase_amplitude_coupling(
@@ -92,7 +97,8 @@ def test_phase_amplitude_coupling():
     conn, fbands = phase_amplitude_coupling(
         raw, f_band_lo_mult, f_band_hi_mult, ixs_pac, pac_func=pac_func,
         tmin=event_times, tmax=event_times + event_dur, n_cycles_ph=4,
-        n_cycles_am=4)
+        n_cycles_amp=4)
+
     # Make sure shapes are right
     assert_equal(conn.shape[2], 4)
     assert_equal(len(fbands), 4)
@@ -103,11 +109,11 @@ def test_phase_amplitude_coupling():
     # Testing multiple n_cycles
     assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo_mult,
                   f_band_hi_mult, ixs_pac, pac_func=pac_func,
-                  n_cycles_ph=[3, 4, 5], n_cycles_am=4)
+                  n_cycles_ph=[3, 4, 5], n_cycles_amp=4)
     assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo_mult,
                   f_band_hi_mult, ixs_pac, pac_func=pac_func,
                   tmin=event_times, tmax=event_times + event_dur,
-                  n_cycles_ph=[[3, 4, 5]], n_cycles_am=4)
+                  n_cycles_ph=[[3, 4, 5]], n_cycles_amp=4)
 
     # Testing Raw + multiple PAC
     conn, _ = phase_amplitude_coupling(
@@ -123,8 +129,41 @@ def test_phase_amplitude_coupling():
     conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func, events=events,
         tmin=0, tmax=event_dur)
+    conn, _ = phase_amplitude_coupling(
+        raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func,
+        events=events[:, 0], tmin=0, tmax=event_dur)
+    # tmin/tmax must both be given
+    assert_raises(ValueError, phase_amplitude_coupling,
+                  raw, f_band_lo, f_band_hi, ixs_pac, pac_func=pac_func,
+                  events=events[:, 0], tmin=None, tmax=event_dur)
+    # Incorrect n dims for events
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo,
+                  f_band_hi, ixs_pac, pac_func=pac_func, events=[events[:, 0]],
+                  tmin=0, tmax=event_dur)
+    # Incorrect n columns for events
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo,
+                  f_band_hi, ixs_pac, pac_func=pac_func, events=events[:, :2],
+                  tmin=0, tmax=event_dur)
+    # tmin < times.min()
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo,
+                  f_band_hi, ixs_pac, pac_func=pac_func, events=events[:, :2],
+                  tmin=-9000, tmax=event_dur)
+    assert_raises(ValueError, phase_amplitude_coupling, raw, f_band_lo,
+                  f_band_hi, ixs_pac, pac_func=pac_func, events=events[:, :2],
+                  tmin=0, tmax=9000)
+
     assert_true(conn.mean() > max_pac)
     assert_equal(conn.shape, (events.shape[0], 1, 1, 1))
+
+    pac = PAC(f_band_lo, f_band_hi, [ixs_pac, ixs_no_pac], times=epochs.times,
+              sfreq=epochs.info['sfreq'], tmin=0, tmax=event_dur,
+              pac_func=pac_func)
+    pac_est = pac.transform(epochs.get_data())
+    assert_true(pac_est[:, 0, :].mean() > max_pac)
+    assert_true(pac_est[:, 1, :].mean() < min_pac)
+
+    assert_array_equal(pac.freq_pairs_[0], [f_band_lo, f_band_hi])
+    assert_raises(ValueError, pac.transform, epochs.get_data()[0])
 
     conn, _ = phase_amplitude_coupling(
         raw, f_band_lo, f_band_hi, ixs_no_pac, pac_func=pac_func,

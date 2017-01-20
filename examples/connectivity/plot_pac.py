@@ -20,7 +20,7 @@ References
 import mne
 import numpy as np
 from matplotlib import pyplot as plt
-from mne_sandbox.connectivity import (simulate_pac_signal,
+from mne_sandbox.connectivity import (PAC, simulate_pac_signal,
                                       phase_amplitude_coupling)
 import logging
 
@@ -48,9 +48,9 @@ mag_ph = 4
 mag_am = 1
 
 # These are the times where PAC is active in our simulated signal
-n_secs = 20.
+n_secs = 30.
 time = np.arange(0, n_secs, 1. / sfreq)
-event_times = np.arange(1, 18, 4)
+event_times = np.arange(1, 28, 4)
 event_dur = 2.
 
 # Create a time mask that defines when PAC is active
@@ -112,14 +112,14 @@ pac_times = np.array(
      for i in np.arange(0, np.max(time) - win_size, step_size)])
 
 # Here we specify indices to calculate PAC in both directions
-ixs = np.array([[0, 1],
+ch_ixs = np.array([[0, 1],
                 [1, 0]])
 fig, axs = plt.subplots(2, 1, figsize=(10, 5))
 ylim = 0
 all_pac = []
 for pac_funcs in iter_pac_funcs:
     pac, pac_freqs = phase_amplitude_coupling(
-        raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
+        raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ch_ixs,
         pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
         n_cycles_ph=3, n_cycles_am=3)
     pac = pac.squeeze()
@@ -152,7 +152,7 @@ ev_tmax = 3.
 pac_times = np.array([(i, i + win_size)
                       for i in np.arange(ev_tmin, ev_tmax, step_size)])
 pac, pac_freqs = phase_amplitude_coupling(
-    raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ixs,
+    raw, (f_phase-.1, f_phase+.1), (f_amp-.5, f_amp+.5), ch_ixs,
     pac_func=pac_funcs, tmin=pac_times[:, 0], tmax=pac_times[:, 1],
     events=ev, concat_epochs=False)
 pac = pac.squeeze()
@@ -181,7 +181,7 @@ freqs_amp = np.array([(i-.1, i+.1)
 cycles_phase = 5.
 cycles_amp = freqs_amp.mean(-1) / 10.
 pac, pac_freqs = phase_amplitude_coupling(
-    raw, freqs_phase, freqs_amp, ixs,
+    raw, freqs_phase, freqs_amp, ch_ixs,
     pac_func=['ozkurt'], tmin=.2, tmax=event_dur - .2,
     events=ev, concat_epochs=True, n_cycles_ph=cycles_phase,
     n_cycles_am=cycles_amp)
@@ -193,11 +193,40 @@ for ax, i_pac in zip(axs, pac):
     comod = i_pac.reshape([-1, len(freqs_amp)]).T
     ax.pcolormesh(freqs_phase[:, 0], freqs_amp[:, 0], comod,
                   vmin=0, vmax=np.max(pac) + .1)
-    print(pac.max())
 _ = plt.setp(axs, xlim=[freqs_phase[:, 0].min(), freqs_phase[:, 0].max()],
              ylim=[freqs_amp[:, 0].min(), freqs_amp[:, 0].max()],
              xlabel='Frequency Phase (Hz)', ylabel='Frequency Amplitude (Hz)')
 axs[0].set_title('Comodulogram: Signal A to Signal B')
 axs[1].set_title('Comodulogram: Signal B to Signal A')
 plt.tight_layout()
+
+# We can also use a sklearn-style API to output a matrix of PAC values.
+tmins = [0, .2, .4]
+tmaxs = [.2, .4, .6]
+events = np.array(event_times) * sfreq
+events = np.vstack([events, np.zeros_like(events), np.ones_like(events)])
+events = events.astype(int).T
+epochs = mne.Epochs(raw, events, tmin=-1, tmax=2, baseline=None,
+                    add_eeg_ref=False)
+
+# A PAC estimator expects data in Epochs format.
+pac = PAC(freqs_phase, freqs_amp, ch_ixs, epochs.times, epochs.info['sfreq'],
+          tmin=tmins, tmax=tmaxs, n_cycles_ph=cycles_phase,
+          n_cycles_am=cycles_amp, pac_func='ozkurt')
+pac_vals = pac.transform(epochs.get_data())
+freq_pairs = pac.freq_pairs_.mean(-1)
+
+fig, axs = plt.subplots(1, 2)
+for i_ch_pair in range(pac_vals.shape[1]):
+    i_pac = pac_vals[:, i_ch_pair, ...].mean(-1)
+    ax = axs[i_ch_pair]
+    ax.imshow(i_pac, aspect='auto', cmap=plt.cm.viridis,
+              interpolation='nearest', vmin=0, vmax=1)
+    ax.set_ylabel('Epoch')
+    ax.set_xlabel('Frequency pair')
+    xtick_ixs = np.arange(0, 72, 10)
+    ax.set_xticks(xtick_ixs)
+    ax.set_xticklabels(freq_pairs[xtick_ixs], rotation=45)
+axs[0].set_title('Estimator PAC\n Signal A to Signal B')
+axs[1].set_title('Estimator PAC\n Signal B to Signal A')
 plt.show(block=True)
