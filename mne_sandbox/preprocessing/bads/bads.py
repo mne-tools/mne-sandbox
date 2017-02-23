@@ -11,7 +11,7 @@ from . import faster_ as _faster
 
 
 @verbose
-def find_bad_channels(epochs, picks=None, method='faster', method_params=None,
+def find_bad_channels(epochs, method='faster', method_params=None, picks=None,
                       return_by_metric=False, verbose=None):
     """Automatically find and mark bad channels.
 
@@ -24,10 +24,10 @@ def find_bad_channels(epochs, picks=None, method='faster', method_params=None,
     ----------
     epochs : Instance of Epochs
         The epochs for which bad channels need to be marked
-    picks : list of int | None
-        Channels to operate on. Defaults to EEG channels.
     method : {'faster'}
         The detection algorithm.
+    picks : list of int | None
+        Channels to operate on. Defaults to EEG channels.
     method_params : dict | None
         The method parameters in a dict.
 
@@ -93,21 +93,19 @@ def find_bad_channels(epochs, picks=None, method='faster', method_params=None,
 
 
 @verbose
-def find_bad_epochs(epochs, picks=None, return_by_metric=False,
-                    method='faster', method_params=None, verbose=None):
+def find_bad_epochs(epochs, method='faster', method_params=None, picks=None,
+                    return_by_metric=False, verbose=None):
     """Automatically find and mark bad epochs.
 
     This function attempts to automatically mark bad epochs. Currently, the
-    only supported method is the FASTER algorithm [1], but more methods will be
-    added in the future. It operates on epoched data, to make sure only
+    only supported method is the FASTER algorithm [1]_, but more methods will
+    be added in the future. It operates on epoched data, to make sure only
     relevant data is analyzed.
 
     Parameters
     ----------
     epochs : Instance of Epochs
         The epochs to analyze.
-    picks : list of int | None
-        Channels to operate on. Defaults to EEG channels.
     method : {'faster'}
         The detection algorithm.
     method_params : dict | None
@@ -125,6 +123,8 @@ def find_bad_epochs(epochs, picks=None, return_by_metric=False,
             The maximum number of iterations performed during outlier detection
             (defaults to 1, as in the original FASTER paper).
 
+    picks : list of int | None
+        Channels to operate on. Defaults to EEG channels.
     return_by_metric : bool
         Whether to return the bad channels as a flat list (False, default) or
         as a dictionary with the names of the used metrics as keys and the
@@ -146,7 +146,7 @@ def find_bad_epochs(epochs, picks=None, return_by_metric=False,
 
     References
     ----------
-    [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
+    .. [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
     thresholding for EEG artifact rejection. Journal of Neuroscience Methods,
     vol. 192, issue 1, pp. 152-162, 2010.
     """
@@ -167,8 +167,9 @@ def find_bad_epochs(epochs, picks=None, return_by_metric=False,
 
 
 @verbose
-def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
-                                method_params=None, return_by_metric=False):
+def find_bad_channels_in_epochs(epochs, method='faster', method_params=None,
+                                picks=None, return_by_metric=False,
+                                verbose=None):
     """Automatically find and mark bad channels in each epoch.
 
     This function attempts to automatically mark bad channels in each epochs.
@@ -213,6 +214,9 @@ def find_bad_channels_in_epochs(epochs, picks=None, method='faster',
         as a dictionary with the names of the used metrics as keys and the
         bad channels found by this metric as values. Is ignored if not
         supported by method.
+    verbose : bool, str, int, or None
+        If not None, override default verbose level (see mne.verbose).
+        Defaults to self.verbose.
 
     Returns
     -------

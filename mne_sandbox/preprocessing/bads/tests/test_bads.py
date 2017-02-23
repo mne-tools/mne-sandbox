@@ -16,27 +16,26 @@ n_samples = int(length * srate)
 time = np.arange(n_samples) / srate
 
 # Fix the seed
-np.random.seed(123)
+rng = np.random.RandomState(123)
 
 
 def test_hurst():
     """Test internal hurst exponent function."""
-    np.random.seed(123)
 
     # Hurst exponent of a sine wave
     p = np.atleast_2d(np.sin(1000))
     assert_almost_equal(p, 0.82687954)
 
     # Positive first derivative, hurst > 1
-    p = np.atleast_2d(np.log10(np.cumsum(np.random.randn(1000) + 100)))
+    p = np.atleast_2d(np.log10(np.cumsum(rng.randn(1000) + 100)))
     assert_true(_hurst(p) > 1)
 
     # First derivative alternating around zero, hurst ~ 0
-    p = np.atleast_2d(np.log10(np.random.randn(1000) + 1000))
+    p = np.atleast_2d(np.log10(rng.randn(1000) + 1000))
     assert_allclose(_hurst(p), 0, atol=0.1)
 
     # Positive, but fluctuating first derivative, hurst ~ 0.5
-    p = np.atleast_2d(np.log10(np.cumsum(np.random.randn(1000)) + 1000))
+    p = np.atleast_2d(np.log10(np.cumsum(rng.randn(1000)) + 1000))
     assert_allclose(_hurst(p), 0.5, atol=0.1)
 
 
@@ -68,7 +67,7 @@ def test_freqs_power():
 def _baseline_signal():
     """Helper function to create the baseline signal"""
     signal = np.tile(np.sin(time), (n_epochs, n_channels, 1))
-    noise = np.random.randn(n_epochs, n_channels, n_samples)
+    noise = rng.randn(n_epochs, n_channels, n_samples)
     return signal, noise
 
 
@@ -97,7 +96,7 @@ def test_find_bad_channels():
     signal[:, 3, :] += 1.2 * np.sin(60 * 2 * np.pi * time)
 
     # This channel has a different noise signature (kurtosis)
-    noise[:, 4, :] = 4 * np.random.rand(n_epochs, n_samples)
+    noise[:, 4, :] = 4 * rng.rand(n_epochs, n_samples)
 
     # TODO: deviant hurst
     epochs = _to_epochs(signal, noise)
