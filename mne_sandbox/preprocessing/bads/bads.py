@@ -16,7 +16,7 @@ def find_bad_channels(epochs, method='faster', method_params=None, picks=None,
     """Automatically find and mark bad channels.
 
     This function attempts to automatically mark bad EEG channels. Currently,
-    the only supported method is the FASTER algorithm [1], but more methods
+    the only supported method is the FASTER algorithm [1]_, but more methods
     will be added in the future. It operates on epoched data, to make sure only
     relevant data is analyzed.
 
@@ -72,7 +72,7 @@ def find_bad_channels(epochs, method='faster', method_params=None, picks=None,
 
     References
     ----------
-    [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
+    .. [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
     thresholding for EEG artifact rejection. Journal of Neuroscience Methods,
     vol. 192, issue 1, pp. 152-162, 2010.
     """
@@ -173,7 +173,7 @@ def find_bad_channels_in_epochs(epochs, method='faster', method_params=None,
     """Automatically find and mark bad channels in each epoch.
 
     This function attempts to automatically mark bad channels in each epochs.
-    Currently, the only supported method is the FASTER algorithm [1], but more
+    Currently, the only supported method is the FASTER algorithm [1]_, but more
     methods will be added in the future. It operates on epoched data, to make
     sure only relevant data is analyzed.
 
@@ -230,7 +230,7 @@ def find_bad_channels_in_epochs(epochs, method='faster', method_params=None,
 
     References
     ----------
-    [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
+    .. [1] H., Whelan R. and Reilly RB. FASTER: fully automated statistical
     thresholding for EEG artifact rejection. Journal of Neuroscience Methods,
     vol. 192, issue 1, pp. 152-162, 2010.
     """
