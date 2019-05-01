@@ -4,8 +4,13 @@
 import numpy as np
 
 from mne import compute_raw_covariance, pick_info
-from mne.cov import (_check_scalings_user, _picks_by_type, _apply_scaling_cov,
-                     _apply_scaling_array, _undo_scaling_array)
+from mne.cov import _check_scalings_user, _picks_by_type
+try:
+    from mne.utils import (_apply_scaling_cov, _apply_scaling_array,
+                           _undo_scaling_array)
+except ImportError:  # old MNE
+    from mne.cov import (_apply_scaling_cov, _apply_scaling_array,
+                         _undo_scaling_array)
 from mne.io.pick import _pick_data_channels, pick_channels
 from mne.io import BaseRaw
 from mne.utils import logger, verbose
