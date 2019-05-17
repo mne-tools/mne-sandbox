@@ -13,7 +13,6 @@ if not callable(peak_finder):
     peak_finder = peak_finder.peak_finder  # old MNE
 
 
-
 # Supported PAC functions
 _pac_funcs = ['plv', 'glm', 'mi_tort', 'mi_canolty', 'ozkurt', 'otc']
 # Calculate the phase of the amplitude signal for these PAC funcs

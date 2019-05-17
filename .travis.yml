@@ -12,6 +12,7 @@ before_install:
     - git clone https://github.com/astropy/ci-helpers.git
     - source ci-helpers/travis/setup_conda.sh
 install:
+    - pip install -e .
     - python -c "import mne; mne.sys_info()"
     - python -c 'import mne; mne.datasets.testing.data_path(verbose=True)'
 script:
