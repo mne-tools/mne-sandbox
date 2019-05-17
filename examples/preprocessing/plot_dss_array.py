@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-
-"""Denoising source separation applied to a NumPy array"""
+"""Denoising source separation applied to a NumPy array."""
 
 # Authors: Daniel McCloy <drmccloy@uw.edu>
 #
