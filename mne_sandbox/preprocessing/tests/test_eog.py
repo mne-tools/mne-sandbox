@@ -1,9 +1,8 @@
-# from nose.tools import assert_true
 import mne
 import numpy as np
 import scipy.stats
-from numpy.testing import assert_allclose
-from nose.tools import assert_equal
+from numpy.testing import assert_allclose, assert_equal
+
 from mne_sandbox.preprocessing.eog import eog_regression
 
 
@@ -45,8 +44,7 @@ def test_eog_regression():
         raw=blinks,
         blink_epochs=mne.Epochs(
             blinks, events, {'blink': 1},
-            tmin=0, tmax=1, preload=True, add_eeg_ref=False
-        ),
+            tmin=0, tmax=1, preload=True),
         eog_channels='VEOG',
         copy=True,
     )
@@ -77,12 +75,10 @@ def test_eog_regression():
         raw=blink_sacc,
         blink_epochs=mne.Epochs(
             blink_sacc, events, {'blink': 1},
-            tmin=0, tmax=1, preload=True, add_eeg_ref=False
-        ),
+            tmin=0, tmax=1, preload=True),
         saccade_epochs=mne.Epochs(
             blink_sacc, events, {'horiz-sacc': 2},
-            tmin=0, tmax=1, preload=True, add_eeg_ref=False
-        ),
+            tmin=0, tmax=1, preload=True),
         eog_channels=['VEOG', 'HEOG'],
         copy=True,
     )
@@ -106,12 +102,10 @@ def test_eog_regression():
         raw=full_eog,
         blink_epochs=mne.Epochs(
             full_eog, events, {'blink': 1},
-            tmin=0, tmax=1, preload=True, add_eeg_ref=False
-        ),
+            tmin=0, tmax=1, preload=True),
         saccade_epochs=mne.Epochs(
             full_eog, events, {'horiz-sacc': 2, 'vert-sacc': 3},
-            tmin=0, tmax=1, preload=True, add_eeg_ref=False
-        ),
+            tmin=0, tmax=1, preload=True),
         reog='REOG',
         eog_channels=['VEOG', 'HEOG', 'REOG'],
         copy=True,
@@ -123,12 +117,10 @@ def test_eog_regression():
     raw = full_eog
     blink_epochs = mne.Epochs(
         full_eog, events, {'blink': 1},
-        tmin=0, tmax=1, preload=True, add_eeg_ref=False
-    )
+        tmin=0, tmax=1, preload=True)
     saccade_epochs = mne.Epochs(
         full_eog, events, {'horiz-sacc': 2, 'vert-sacc': 3},
-        tmin=0, tmax=1, preload=True, add_eeg_ref=False
-    )
+        tmin=0, tmax=1, preload=True)
 
     # Default parameters
     raw2 = raw.copy()

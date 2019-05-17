@@ -21,9 +21,8 @@ env:
     #
     # Conda currently has packaging bug with mayavi/traits/numpy where 1.10 can't be used
     # but breaks sklearn on install; hopefully eventually the NUMPY=1.9 on 2.7 full can be removed
-    - PYTHON=2.7 TEST_LOCATION=src NUMPY="=1.9" SCIPY="=0.17"
-    - PYTHON=2.7 TEST_LOCATION=install NUMPY="=1.9" SCIPY="=0.17"
-    - PYTHON=3.5 TEST_LOCATION=src
+    - PYTHON=3.6 TEST_LOCATION=install NUMPY="=1.9" SCIPY="=0.17"
+    - PYTHON=3.7 TEST_LOCATION=src
 
 # Setup anaconda
 before_install:
@@ -40,7 +39,7 @@ install:
     - conda create -n testenv --yes pip python=$PYTHON
     - source activate testenv
     - ENSURE_PACKAGES="numpy$NUMPY scipy$SCIPY matplotlib$MPL libpng$LIBPNG"
-    - conda install --yes --quiet $ENSURE_PACKAGES nose coverage
+    - conda install --yes --quiet $ENSURE_PACKAGES pytest pytest-cov pytest-sugar coverage
     # We have to replicate e.g. numpy$NUMPY to ensure the recommended (higher) versions
     # are not automatically installed below with multiple "conda install" calls!
     - curl https://staff.washington.edu/larsoner/minimal_cmds.tar.gz | tar xz;
@@ -59,8 +58,7 @@ install:
           pip install -q pysurfer faulthandler;
         fi;
       fi;
-    - pip install -q flake8;
-    - pip install -q coveralls nose-timer
+    - pip install -q flake8 coveralls
     # check our versions for the major packages
     - NP_VERSION=`python -c 'import numpy; print(numpy.__version__)'`
     - if [ -n "$NUMPY" ] && [ "${NUMPY:(-3)}" != "${NP_VERSION::3}" ]; then
@@ -103,14 +101,9 @@ install:
       else
         cd ${SRC_DIR};
       fi;
-    - if [ "${PYTHON}" != "3.5" ]; then
-        COVERAGE=--with-coverage;
-      else
-        COVERAGE=;
-      fi;
 
 script:
-    - nosetests -a '!ultra_slow_test' --with-timer --timer-top-n 30 --verbosity=2 $COVERAGE mne_sandbox
+    - pytest -m 'not ultra_slow_test' mne_sandbox
     - if [ "${TEST_LOCATION}" != "install" ]; then
         make flake;
       fi;
