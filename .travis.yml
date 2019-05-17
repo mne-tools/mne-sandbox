@@ -1,118 +1,21 @@
 language: python
-
-# Use container-based infrastructure
 sudo: false
-
 env:
-    # Enable python 2 and python 3 builds
-    # DEPS=full: build optional dependencies: pandas, nitime, statsmodels,
-    #            scikit-learn, patsy, nibabel pillow;
-    #            in the case of Python 2, also mayavi, traits, pysurfer
-    # DEPS=minimal: don't build optional dependencies; tests that require those
-    #               dependencies are supposed to be skipped
-    #
-    # Note that we don't run coverage on Py3k anyway because it slows our tests
-    # by a factor of 2 (!), so we make this our "from install dir" run.
-    #
-    # Run one test (3.5) with a non-default stim channel to make sure our
-    # tests are explicit about channels.
-    #
-    # Must force libpng version to avoid silly libpng.so.15 error (MPL 1.1 needs it)
-    #
-    # Conda currently has packaging bug with mayavi/traits/numpy where 1.10 can't be used
-    # but breaks sklearn on install; hopefully eventually the NUMPY=1.9 on 2.7 full can be removed
-    - PYTHON=3.6 TEST_LOCATION=install NUMPY="=1.9" SCIPY="=0.17"
-    - PYTHON=3.7 TEST_LOCATION=src
-
-# Setup anaconda
+    global: CONDA_DEPENDENCIES="numpy scipy matplotlib scikit-learn h5py pillow pytest pytest-cov coverage"
+            PIP_DEPENDENCIES="pytest-sugar pytest-faulthandler joblib nibabel flake8 coveralls https://api.github.com/repos/mne-tools/mne-python/zipball/master"
+            MNE_LOGGING_LEVEL="warning"
+matrix:
+    include:
+        - env: PYTHON_VERSION=3.6
+        - env: PYTHON_VERSION=3.7
 before_install:
-  - wget -q http://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh
-  - chmod +x miniconda.sh
-  - ./miniconda.sh -b -p /home/travis/miniconda
-  - export PATH=/home/travis/miniconda/bin:$PATH
-  - conda update --yes --quiet conda
-  # We need to create a (fake) display on Travis (allows Mayavi tests to run)
-  - export DISPLAY=:99.0
-  - /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1400x900x24 -ac +extension GLX +render -noreset
-
+    - git clone https://github.com/astropy/ci-helpers.git
+    - source ci-helpers/travis/setup_conda.sh
 install:
-    - conda create -n testenv --yes pip python=$PYTHON
-    - source activate testenv
-    - ENSURE_PACKAGES="numpy$NUMPY scipy$SCIPY matplotlib$MPL libpng$LIBPNG"
-    - conda install --yes --quiet $ENSURE_PACKAGES pytest pytest-cov pytest-sugar coverage
-    # We have to replicate e.g. numpy$NUMPY to ensure the recommended (higher) versions
-    # are not automatically installed below with multiple "conda install" calls!
-    - curl https://staff.washington.edu/larsoner/minimal_cmds.tar.gz | tar xz;
-    - export MNE_ROOT="${PWD}/minimal_cmds";
-    - export NEUROMAG2FT_ROOT="${PWD}/minimal_cmds/bin";
-    - source ${MNE_ROOT}/bin/mne_setup_sh;
-    - conda install --yes --quiet $ENSURE_PACKAGES pandas$PANDAS scikit-learn$SKLEARN patsy h5py pillow;
-    - pip install -q joblib nibabel;
-    - if [ "${PYTHON}" == "3.5" ]; then
-        conda install --yes --quiet $ENSURE_PACKAGES ipython;
-      else
-        conda install --yes --quiet $ENSURE_PACKAGES ipython==1.1.0 statsmodels pandas$PANDAS;
-        pip install -q nitime;
-        if [ "${PYTHON}" == "2.7" ]; then
-          conda install --yes --quiet $ENSURE_PACKAGES mayavi traits;
-          pip install -q pysurfer faulthandler;
-        fi;
-      fi;
-    - pip install -q flake8 coveralls
-    # check our versions for the major packages
-    - NP_VERSION=`python -c 'import numpy; print(numpy.__version__)'`
-    - if [ -n "$NUMPY" ] && [ "${NUMPY:(-3)}" != "${NP_VERSION::3}" ]; then
-        echo "Incorrect numpy version $NP_VERSION";
-        exit 1;
-      fi;
-    - SP_VERSION=`python -c 'import scipy; print(scipy.__version__)'`
-    - if [ -n "$SCIPY" ] && [ "${SCIPY:(-4)}" != "${SP_VERSION::4}" ]; then
-        echo "Incorrect scipy version $SP_VERSION";
-        exit 1;
-      fi;
-    - MPL_VERSION=`python -c 'import matplotlib; print(matplotlib.__version__)'`
-    - if [ -n "$MPL" ] && [ "${MPL:(-3)}" != "${MPL_VERSION::3}" ]; then
-        echo "Incorrect matplotlib version $MPL_VERSION";
-        exit 1;
-      fi;
-    # Install latest snapshot of MNE-Python
-    - pip install -q https://github.com/mne-tools/mne-python/archive/master.zip
-    # Suppress the parallel outputs for logging cleanliness
-    - export MNE_LOGGING_LEVEL=warning
-    - python setup.py build
-    # Use PIP to install, so setuptools does not produce a binary egg
-    - pip install .
-    - SRC_DIR=$(pwd)
-    - cd ~
-    # Trigger download of testing data. Note that
-    # the testing dataset has been constructed to contain the necessary
-    # files to act as a FREESURFER_HOME for the coreg tests
-    - python -c 'import mne; mne.datasets.testing.data_path(verbose=True)';
-      export FREESURFER_HOME=$(python -c 'import mne; print(mne.datasets.testing.data_path())');
-    - MNE_DIR=$(python -c 'import mne;print(mne.__path__[0])')
-    - MNE_SANDBOX_DIR=$(python -c 'import mne_sandbox;print(mne_sandbox.__path__[0])')
-    # We run two versions: one out of the source directory (that makes
-    # coveralls coverage work), and one out of the install directory (that
-    # ensures we have included all necessary files).
-    - if [ "${TEST_LOCATION}" == "install" ]; then
-        ln -s ${SRC_DIR}/setup.cfg ${MNE_SANDBOX_DIR}/../setup.cfg;
-        ln -s ${SRC_DIR}/.coveragerc ${MNE_SANDBOX_DIR}/../.coveragerc;
-        cd ${MNE_SANDBOX_DIR}/../;
-      else
-        cd ${SRC_DIR};
-      fi;
-
+    - python -c "import mne; mne.sys_info()"
+    - python -c 'import mne; mne.datasets.testing.data_path(verbose=True)'
 script:
-    - pytest -m 'not ultra_slow_test' mne_sandbox
-    - if [ "${TEST_LOCATION}" != "install" ]; then
-        make flake;
-      fi;
-
+    - pytest mne_sandbox
+    - make flake
 after_success:
-    # Need to run from source dir to exectue "git" commands
-    # Coverage not collected for 3.5, so don't report it
-    - if [ "${TEST_LOCATION}" == "src" ] && [ "${PYTHON}" != "3.5" ]; then
-        echo "Running coveralls";
-        cd ${SRC_DIR};
-        coveralls;
-      fi;
+    - coveralls
