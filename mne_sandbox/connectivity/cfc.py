@@ -9,6 +9,9 @@ from itertools import product
 import mne
 import warnings
 
+if not callable(peak_finder):
+    peak_finder = peak_finder.peak_finder  # old MNE
+
 
 # Supported PAC functions
 _pac_funcs = ['plv', 'glm', 'mi_tort', 'mi_canolty', 'ozkurt', 'otc']
@@ -486,7 +489,7 @@ def phase_locked_amplitude(inst, freqs_phase, freqs_amp, ix_ph, ix_amp,
     band_ph = band_ph.mean(0)
 
     # Find peaks in the phase for time-locking
-    phase_peaks, vals = peak_finder.peak_finder(angle_ph)
+    phase_peaks, vals = peak_finder(angle_ph)
     ixmin, ixmax = [t * sfreq for t in [tmin, tmax]]
     # Remove peaks w/o buffer
     phase_peaks = phase_peaks[(phase_peaks > np.abs(ixmin)) *
@@ -645,7 +648,7 @@ def _band_pass_pac(x, f_range, sfreq=1000, n_cycles=3):
     if np.any(np.array(f_range) < 0):
         raise ValueError('Filter frequencies must be positive.')
 
-    n_taps = np.floor(n_cycles * sfreq / f_range[0])
+    n_taps = int(np.floor(n_cycles * sfreq / f_range[0]))
     if len(x) < n_taps:
         raise RuntimeError(
             'Length of filter is longer than data. '

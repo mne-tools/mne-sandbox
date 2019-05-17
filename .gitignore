@@ -21,3 +21,4 @@
 .DS_Store
 build
 *.orig
+junit-results.xml

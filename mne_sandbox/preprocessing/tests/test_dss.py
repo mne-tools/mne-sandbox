@@ -1,25 +1,27 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+from numpy.testing import assert_allclose
+import pytest
+
 from mne import create_info, EpochsArray
 from mne_sandbox.preprocessing import dss
-from numpy.testing import assert_allclose, assert_raises
 
 
 def test_dss_args():
-    """Test DSS error handling"""
+    """Test DSS error handling."""
     data1 = list()
     data2 = np.arange(6).reshape(2, 3)
     data3 = np.arange(2 * 3 * 5).reshape(2, 3, 5)
     data4 = np.arange(2 * 3 * 5 * 7).reshape(2, 3, 5, 7)
-    assert_raises(TypeError, dss, data1)
-    assert_raises(ValueError, dss, data2)  # not enough dimensions
-    assert_raises(ValueError, dss, data4)  # too many dimensions
-    assert_raises(ValueError, dss, data3, data_thresh=2)  # invalid threshold
+    pytest.raises(TypeError, dss, data1)
+    pytest.raises(ValueError, dss, data2)  # not enough dimensions
+    pytest.raises(ValueError, dss, data4)  # too many dimensions
+    pytest.raises(ValueError, dss, data3, data_thresh=2)  # invalid threshold
 
 
 def test_dss():
-    """Test DSS computations"""
+    """Test DSS computations."""
 
     def rms(data):
         return np.sqrt(np.mean(data ** 2, axis=-1, keepdims=True))
