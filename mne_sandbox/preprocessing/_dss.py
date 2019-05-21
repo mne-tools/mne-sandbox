@@ -43,8 +43,8 @@ def dss(data, data_max_components=None, data_thresh='auto',
         (the default) keeps all non-zero values; to keep all values, pass
         ``thresh=None`` and ``max_components=None``.
     max_delay : int
-        Maximum delay to consider. Zero will use DSS, anything greater
-        than zero will use tsDSS.
+        Maximum delay (in samples) to consider. Zero will use DSS, anything
+        greater than zero will use tsDSS.
     rank : None | dict | 'info' | 'full'
         See :func:`mne.compute_rank`.
     return_data : bool
@@ -88,7 +88,7 @@ def dss(data, data_max_components=None, data_thresh='auto',
     # Upsample to virtual channels for tsDSS
     max_delay = _ensure_int(max_delay)
     if max_delay < 0:
-        raise ValueError('max_delay must be > 0, got %s' % (max_delay,))
+        raise ValueError('max_delay must be ≥ 0, got %s' % (max_delay,))
     rank = {key: max_delay * val for key, val in rank.items()}
     data = _delay_time_series(data.transpose(2, 0, 1), 0, max_delay, 1.)
     data = data.transpose(1, 2, 3, 0)  # ep, ch, del, time
