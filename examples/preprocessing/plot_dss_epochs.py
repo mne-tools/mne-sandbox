@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-
-"""Denoising source separation applied to an Epochs object"""
+"""Denoising source separation applied to an Epochs object."""
 
 # Authors: Daniel McCloy <drmccloy@uw.edu>
 #
@@ -18,23 +17,18 @@ from mne_sandbox.preprocessing import dss
 
 # file paths
 data_path = sample.data_path()
-raw_fname = op.join(data_path, 'MEG', 'sample', 'sample_audvis_raw.fif')
-events_fname = op.join(data_path, 'MEG', 'sample', 'sample_audvis_raw-eve.fif')
+raw_fname = op.join(data_path, 'MEG', 'sample',
+                    'sample_audvis_filt-0-40_raw.fif')
 # import sample data
 raw = mne.io.read_raw_fif(raw_fname, preload=True)
-events = mne.read_events(events_fname)
-# pick channels, filter, epoch
-picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=True)
-# reject = dict(eeg=180e-6, eog=150e-6)
-reject = None
-raw.filter(0.3, 30, method='iir', picks=picks)
-epochs = mne.Epochs(raw, events, event_id=1, preload=True, picks=picks,
-                    reject=reject)
-epochs.pick_types(eeg=True)
+picks = mne.pick_types(raw.info, meg=False, eeg=True)
+events = mne.find_events(raw)
+epochs = mne.Epochs(raw, events, event_id=1, preload=True,
+                    baseline=(None, 0), picks=picks)
 evoked = epochs.average()
 
 # perform DSS
-dss_mat, dss_data = dss(epochs, data_thresh=1e-9, bias_thresh=1e-9)
+dss_mat, dss_data = dss(epochs)
 
 evoked_data_clean = np.dot(dss_mat, evoked.data)
 evoked_data_clean[4:] = 0.  # select 4 components
