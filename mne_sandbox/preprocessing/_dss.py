@@ -6,15 +6,19 @@
 #
 # License: BSD (3-clause)
 
+from copy import deepcopy
+
 import numpy as np
 from mne import (Epochs, EpochsArray, compute_covariance, create_info,
                  compute_rank)
 from mne.cov import compute_whitener
+from mne.decoding.receptive_field import _delay_time_series
+from mne.utils import _ensure_int
 
 
 def dss(data, data_max_components=None, data_thresh='auto',
-        bias_max_components=None, bias_thresh=1e-6, rank=None,
-        return_data=True):
+        bias_max_components=None, bias_thresh=1e-6, max_delay=0,
+        rank=None, return_data=True):
     """Process physiological data with denoising source separation (DSS).
 
     Implementation follows the procedure described in Särelä & Valpola [1]_
@@ -38,6 +42,9 @@ def dss(data, data_max_components=None, data_thresh='auto',
         will be discarded during decomposition of the bias function. ``None``
         (the default) keeps all non-zero values; to keep all values, pass
         ``thresh=None`` and ``max_components=None``.
+    max_delay : int
+        Maximum delay to consider. Zero will use DSS, anything greater
+        than zero will use tsDSS.
     rank : None | dict | 'info' | 'full'
         See :func:`mne.compute_rank`.
     return_data : bool
@@ -65,8 +72,7 @@ def dss(data, data_max_components=None, data_thresh='auto',
     """
     if isinstance(data, (Epochs, EpochsArray)):
         epochs = data
-        if return_data:
-            data = epochs.get_data(picks='all')
+        data = epochs.get_data()
     elif isinstance(data, np.ndarray):
         if data.ndim != 3:
             raise ValueError('Data to denoise must have shape '
@@ -76,13 +82,31 @@ def dss(data, data_max_components=None, data_thresh='auto',
     else:
         raise TypeError('Data to denoise must be an instance of mne.Epochs or '
                         'ndarray, got type %s' % (type(data),))
-    data_cov = compute_covariance(epochs, verbose='error')
-    bias_epochs = EpochsArray(epochs.average(picks='all').data[np.newaxis],
-                              epochs.info)
-    bias_cov = compute_covariance(bias_epochs, verbose='error')
     _check_thresh(data_thresh)
     rank = compute_rank(epochs, rank=rank, tol=data_thresh)
-    dss_mat = _dss(data_cov, bias_cov, epochs.info, rank, data_max_components,
+
+    # Upsample to virtual channels for tsDSS
+    max_delay = _ensure_int(max_delay)
+    if max_delay < 0:
+        raise ValueError('max_delay must be > 0, got %s' % (max_delay,))
+    rank = {key: max_delay * val for key, val in rank.items()}
+    data = _delay_time_series(data.transpose(2, 0, 1), 0, max_delay, 1.)
+    data = data.transpose(1, 2, 3, 0)  # ep, ch, del, time
+    data = np.reshape(data, (data.shape[0], -1, data.shape[-1]))
+    info = epochs.info.copy()
+    chs = list()
+    for ch in info['chs']:
+        for ii in range(max_delay + 1):
+            this_ch = deepcopy(ch)
+            this_ch['ch_name'] += '_%06d' % (ii,)
+            chs.append(this_ch)
+    info.update(projs=[], chs=chs)
+    info._update_redundant()
+    info._check_consistency()
+    epochs = EpochsArray(data, info)
+
+    # Actually compute DSS transformation
+    dss_mat = _dss(epochs, rank, data_max_components,
                    bias_max_components, bias_thresh)
     if return_data:
         # next line equiv. to: np.array([np.dot(dss_mat, ep) for ep in data])
@@ -92,14 +116,19 @@ def dss(data, data_max_components=None, data_thresh='auto',
         return dss_mat
 
 
-def _dss(data_cov, bias_cov, info, rank, data_max_components=None,
-         bias_max_components=None, bias_thresh=None):
+def _dss(epochs, rank, data_max_components,
+         bias_max_components, bias_thresh):
     """Process physiological data with denoising source separation (DSS).
 
     Acts on covariance matrices; allows specification of arbitrary bias
     functions (as compared to the public ``dss`` function, which forces the
     bias to be the evoked response).
     """
+    data_cov = compute_covariance(epochs, verbose='error')
+    bias_epochs = EpochsArray(epochs.average(picks='all').data[np.newaxis],
+                              epochs.info)
+    bias_cov = compute_covariance(bias_epochs, verbose='error')
+
     # From Eq. 7 in the de Cheveigné and Simon paper, the dss_mat A:
     #     A = P @ Q @ R2 @ N2 @ R1 @ N1
     # Where:
@@ -117,7 +146,7 @@ def _dss(data_cov, bias_cov, info, rank, data_max_components=None,
     # -------------------------------------------------
     # Obtain via compute_whitener in MNE so we can be careful about channel
     # types and rank deficiency.
-    N2_R1 = compute_whitener(data_cov, info, pca=True, rank=rank,
+    N2_R1 = compute_whitener(data_cov, epochs.info, pca=True, rank=rank,
                              verbose='error')[0]  # ignore avg ref warnings
 
     # Second rotation (R2)
@@ -129,17 +158,16 @@ def _dss(data_cov, bias_cov, info, rank, data_max_components=None,
     R2 = R2.T
     # proj. matrix from data to bias-maximizing space (DSS space)
     A = R2 @ N2_R1
-
-    # Normalization (P)
-    # -----------------
-    # Normalize DSS dimensions (this might be P?)
+    # Normalize DSS dimensions
     P = np.sqrt(1 / np.diag(A.dot(data_cov['data']).dot(A.T)))
     A *= P[:, np.newaxis]
+
+    # Q and P are left to be computed by the user.
     return A
 
 
 def _check_thresh(thresh):
-    if thresh is not None and (thresh > 1 or thresh < 0):
+    if thresh is not None and thresh != 'auto' and not 0 <= thresh <= 1:
         raise ValueError('Threshold must be between 0 and 1 (or None).')
 
 
@@ -165,7 +193,6 @@ def _pca(cov, max_components=None, thresh=0):
     eigvec : array
         2-dimensional array of eigenvectors.
     """
-
     _check_thresh(thresh)
     eigval, eigvec = np.linalg.eigh(cov)
     eigval = np.abs(eigval)

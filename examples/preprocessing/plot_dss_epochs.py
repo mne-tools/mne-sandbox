@@ -29,7 +29,7 @@ epochs = mne.Epochs(raw, events, event_id=1, preload=True,
 evoked = epochs.average()
 
 # perform DSS
-dss_mat, dss_data = dss(epochs, data_thresh=1e-9, bias_thresh=1e-9)
+dss_mat, dss_data = dss(epochs, max_delay=5)
 
 evoked_data_clean = np.dot(dss_mat, evoked.data)
 evoked_data_clean[4:] = 0.  # select 4 components
